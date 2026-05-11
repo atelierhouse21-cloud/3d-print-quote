@@ -1,11 +1,11 @@
+export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { Resend } from 'resend'
 import { krw } from '@/lib/constants'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-// PATCH: 견적 상태 업데이트 (승인 / 거절)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -17,8 +17,8 @@ export async function PATCH(
 
   const body = await req.json()
   const { status, admin_price, admin_days, admin_note } = body
+  const supabaseAdmin = getSupabaseAdmin()
 
-  // DB 업데이트
   const { data: quote, error } = await supabaseAdmin
     .from('quotes')
     .update({ status, admin_price, admin_days, admin_note })
@@ -28,7 +28,6 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // 고객에게 결과 이메일 발송
   if (status === 'approved') {
     await resend.emails.send({
       from: process.env.FROM_EMAIL!,
