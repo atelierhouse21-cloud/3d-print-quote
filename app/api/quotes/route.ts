@@ -38,14 +38,9 @@ export async function POST(req: NextRequest) {
     let file_path: string | null = null
     let file_name: string | null = null
     if (file && file.size > 0) {
-      file_name = file.name
-      const ext = file.name.split('.').pop()
-      const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const { error: upErr } = await supabaseAdmin.storage
-        .from('quote-files')
-        .upload(path, file)
-      if (!upErr) file_path = path
-    }
+  file_name = file.name
+  file_path = null
+}
 
     const quote_no   = await getNextQuoteNo()
     const auto_price = vol > 0 ? calcPrice(method, vol, qm, qty, infill) : null
