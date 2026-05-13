@@ -119,7 +119,12 @@ export default function AdminPage() {
         </Section>
         <Section title="업로드 파일">
           <Info label="파일명" value={sel.file_name||'-'} />
-          <Info label="추정 부피" value={sel.vol_cm3 ? `~${sel.vol_cm3} cm³` : '-'} />
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginTop:8 }}>
+            <Info label="X (가로)" value={(sel as any).size_x ? `${(sel as any).size_x} mm` : '-'} />
+            <Info label="Y (세로)" value={(sel as any).size_y ? `${(sel as any).size_y} mm` : '-'} />
+            <Info label="Z (높이)" value={(sel as any).size_z ? `${(sel as any).size_z} mm` : '-'} />
+            <Info label="부피" value={sel.vol_cm3 ? `${sel.vol_cm3} cm³` : '-'} />
+          </div>
         </Section>
       </div>
 
