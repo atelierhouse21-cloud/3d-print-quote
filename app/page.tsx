@@ -104,7 +104,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
     const ctx = canvas.getContext('2d'); if (!ctx) return
     const W=canvas.width, H=canvas.height
     ctx.clearRect(0,0,W,H); ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,W,H)
-    const baseScale = Math.min(W,H)*0.90/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
+    const baseScale = Math.min(W,H)*0.80/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
     const scale=baseScale*zoom.current
     const cx=bbox.cx,cy=bbox.cy,cz=bbox.cz
     const cry=Math.cos(rotY.current),sry=Math.sin(rotY.current)
@@ -437,10 +437,7 @@ export default function Home() {
               <div style={S.grp}><label style={S.lbl}>이메일 *</label><input type="email" value={customer.email} onChange={e=>updC('email',e.target.value)} placeholder="example@mail.com" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>회사 / 기관</label><input type="text" value={customer.company} onChange={e=>updC('company',e.target.value)} placeholder="(주)회사명 또는 개인" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>연락처</label><input type="tel" value={customer.phone} onChange={e=>updC('phone',e.target.value)} placeholder="010-0000-0000" style={S.inp}/></div>
-              <div style={{...S.grp,gridColumn:'1/-1'}}>
-                <label style={S.lbl}>요청 사항</label>
-                <textarea value={customer.note} onChange={e=>updC('note',e.target.value)} placeholder="납기 요청, 표면 처리, 특이 사항 등" style={{...S.inp,minHeight:70,resize:'vertical'}}/>
-              </div>
+
             </div>
             <div style={{display:'flex',justifyContent:'flex-end'}}>
               <button style={{...S.btn,background:'#2563eb',color:'#fff'}}
@@ -471,6 +468,14 @@ export default function Home() {
                   + 파일 선택
                 </button>
               </div>
+            </div>
+
+            {/* 요청 사항 */}
+            <div style={{...S.grp,marginBottom:16}}>
+              <label style={S.lbl}>요청 사항</label>
+              <textarea value={customer.note} onChange={e=>updC('note',e.target.value)}
+                placeholder="납기 요청, 표면 처리, 후처리, 특이 사항 등을 입력하세요"
+                style={{...S.inp,minHeight:70,resize:'vertical'}}/>
             </div>
 
             {items.length===0&&(
