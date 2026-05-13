@@ -1,4 +1,3 @@
-export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { calcPrice, calcDays } from '@/lib/constants'
@@ -6,8 +5,8 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// 견적 번호 생성
 async function getNextQuoteNo(): Promise<string> {
-  const supabaseAdmin = getSupabaseAdmin()
   const { count } = await supabaseAdmin
     .from('quotes')
     .select('*', { count: 'exact', head: true })
@@ -15,6 +14,7 @@ async function getNextQuoteNo(): Promise<string> {
   return `Q-${String(n).padStart(3, '0')}`
 }
 
+// ── POST: 새 견적 접수 ──────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const supabaseAdmin = getSupabaseAdmin()
@@ -35,14 +35,20 @@ export async function POST(req: NextRequest) {
     const vol      = parseFloat(formData.get('vol') as string) || 0
     const file     = formData.get('file') as File | null
 
+    // 파일 업로드 (Supabase Storage)
     let file_path: string | null = null
     let file_name: string | null = null
     if (file && file.size > 0) {
-  file_name = file.name
-  file_path = null
-}
+      file_name = file.name
+      const ext = file.name.split('.').pop()
+      const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+      const { error: upErr } = await supabaseAdmin.storage
+        .from('quote-files')
+        .upload(path, file)
+      if (!upErr) file_path = path
+    }
 
-    const quote_no   = await getNextQuoteNo()
+    const quote_no  = await getNextQuoteNo()
     const auto_price = vol > 0 ? calcPrice(method, vol, qm, qty, infill) : null
 
     const { data, error } = await supabaseAdmin
@@ -51,6 +57,9 @@ export async function POST(req: NextRequest) {
         quote_no, name, email, company, phone, note,
         method, material, color, quality, qty, infill,
         vol_cm3: vol, file_name, file_path, auto_price,
+        size_x: parseFloat(formData.get('sizeX') as string) || null,
+        size_y: parseFloat(formData.get('sizeY') as string) || null,
+        size_z: parseFloat(formData.get('sizeZ') as string) || null,
         status: 'pending',
       })
       .select()
@@ -58,6 +67,7 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
+    // 고객 확인 이메일
     await resend.emails.send({
       from: process.env.FROM_EMAIL!,
       to: email,
@@ -76,8 +86,9 @@ export async function POST(req: NextRequest) {
           <p style="margin-top:24px;color:#6b7280;font-size:13px;">담당자 검토 후 1~2 영업일 이내 최종 견적을 안내드립니다.</p>
         </div>
       `,
-    }).catch(() => {})
+    }).catch(() => {}) // 이메일 실패해도 견적 접수는 유지
 
+    // 관리자 알림 이메일
     await resend.emails.send({
       from: process.env.FROM_EMAIL!,
       to: process.env.ADMIN_EMAIL!,
@@ -96,6 +107,7 @@ export async function POST(req: NextRequest) {
             ${note ? `<tr><td style="padding:8px 0;color:#6b7280;">요청 사항</td><td style="padding:8px 0;">${note}</td></tr>` : ''}
             ${file_name ? `<tr><td style="padding:8px 0;color:#6b7280;">업로드 파일</td><td style="padding:8px 0;">${file_name}</td></tr>` : ''}
           </table>
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin" style="display:inline-block;margin-top:20px;padding:10px 20px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;">관리자 페이지에서 확인하기</a>
         </div>
       `,
     }).catch(() => {})
@@ -106,6 +118,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// ── GET: 견적 목록 조회 (관리자용) ─────────────────────
 export async function GET(req: NextRequest) {
   const pw = req.headers.get('x-admin-password')
   if (pw !== process.env.ADMIN_PASSWORD) {
