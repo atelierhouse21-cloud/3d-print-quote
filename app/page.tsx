@@ -190,17 +190,34 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
     }
     tris.sort((a,b)=>a.d-b.d)
 
-    const lx=0.4, ly=0.7, lz=0.6, ll=Math.sqrt(lx*lx+ly*ly+lz*lz)
+    // 3방향 조명으로 자연스러운 음영
+    const lights = [
+      { x:0.6,  y:0.8,  z:0.4,  intensity:0.55 },
+      { x:-0.5, y:0.3,  z:0.2,  intensity:0.25 },
+      { x:0.1,  y:-0.4, z:-0.6, intensity:0.10 },
+    ]
     for (const t of tris) {
-      const diff = Math.max(0, t.nx*lx/ll + t.ny*ly/ll + t.nz*lz/ll)
-      const amb = 0.25
-      const bright = Math.round((amb + diff*(1-amb)) * 220)
+      let diff = 0
+      for (const l of lights) {
+        const ll = Math.sqrt(l.x*l.x+l.y*l.y+l.z*l.z)
+        diff += Math.max(0, t.nx*l.x/ll + t.ny*l.y/ll + t.nz*l.z/ll) * l.intensity
+      }
+      const amb = 0.38
+      const bright = amb + diff * (1 - amb)
+      // 회색 계열 색상
+      const lo = 80, hi = 235
+      const v = Math.round(lo + bright * (hi - lo))
       ctx.beginPath()
-      ctx.moveTo(t.pts[0].px, t.pts[0].py)
-      ctx.lineTo(t.pts[1].px, t.pts[1].py)
-      ctx.lineTo(t.pts[2].px, t.pts[2].py)
+      // 삼각형을 0.6px 살짝 확장하여 메쉬 라인(틈새) 제거
+      const [p0,p1,p2] = t.pts
+      const cx2=(p0.px+p1.px+p2.px)/3, cy2=(p0.py+p1.py+p2.py)/3
+      const expand = 0.6
+      const ep = t.pts.map(p=>({ px: cx2+(p.px-cx2)*(1+expand/Math.max(1,Math.abs(p.px-cx2)+Math.abs(p.py-cy2))), py: cy2+(p.py-cy2)*(1+expand/Math.max(1,Math.abs(p.px-cx2)+Math.abs(p.py-cy2))) }))
+      ctx.moveTo(ep[0].px, ep[0].py)
+      ctx.lineTo(ep[1].px, ep[1].py)
+      ctx.lineTo(ep[2].px, ep[2].py)
       ctx.closePath()
-      ctx.fillStyle = `rgb(${Math.round(bright*0.28)},${Math.round(bright*0.48)},${bright})`
+      ctx.fillStyle = `rgb(${v},${v},${v})`
       ctx.fill()
     }
   }
