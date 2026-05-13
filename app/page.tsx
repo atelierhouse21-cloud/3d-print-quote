@@ -112,12 +112,15 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
   const [info, setInfo] = useState<STLInfo|null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(false)
-  const [rotate, setRotate] = useState(0)
+  const [tick, setTick] = useState(0)
   const dragging = useRef(false)
   const lastX = useRef(0)
+  const lastY = useRef(0)
   const vertsRef = useRef<Float32Array|null>(null)
   const bboxRef = useRef<ReturnType<typeof calcBBox>|null>(null)
-  const rotRef = useRef(0)
+  const rotY = useRef(0.4)   // 수평 회전 (Y축)
+  const rotX = useRef(-0.3)  // 수직 회전 (X축)
+  const zoom = useRef(1.0)
 
   useEffect(() => {
     if (!file) return
@@ -130,6 +133,7 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
         const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume }
         setInfo(si); onAnalyzed(si)
         vertsRef.current = v; bboxRef.current = bbox
+        rotY.current = 0.4; rotX.current = -0.3; zoom.current = 1.0
         setLoading(false)
       } catch { setErr(true); setLoading(false) }
     }).catch(() => { setErr(true); setLoading(false) })
@@ -137,77 +141,108 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
 
   useEffect(() => {
     if (!canvasRef.current || !vertsRef.current || !bboxRef.current) return
-    // 회전 적용하여 렌더
-    renderSTLRotated(canvasRef.current, vertsRef.current, bboxRef.current, rotRef.current)
-  }, [loading, rotate])
+    draw()
+  }, [loading, tick])
 
-  function renderSTLRotated(canvas: HTMLCanvasElement, verts: Float32Array, bbox: ReturnType<typeof calcBBox>, rot: number) {
+  function draw() {
+    const canvas = canvasRef.current
+    const verts = vertsRef.current
+    const bbox = bboxRef.current
+    if (!canvas || !verts || !bbox) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const W = canvas.width, H = canvas.height
     ctx.clearRect(0,0,W,H)
-    ctx.fillStyle='#f9fafb'; ctx.fillRect(0,0,W,H)
+    ctx.fillStyle = '#f9fafb'; ctx.fillRect(0,0,W,H)
 
-    const scale = Math.min(W,H)*0.5/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
+    const baseScale = Math.min(W,H) * 0.45 / Math.max(bbox.x||1, bbox.y||1, bbox.z||1)
+    const scale = baseScale * zoom.current
     const cx=bbox.cx, cy=bbox.cy, cz=bbox.cz
-    const cr=Math.cos(rot), sr=Math.sin(rot)
-    const ax=Math.PI/6, ca=Math.cos(ax), sa=Math.sin(ax)
+    const ry=rotY.current, rx=rotX.current
+    const cry=Math.cos(ry), sry=Math.sin(ry)
+    const crx=Math.cos(rx), srx=Math.sin(rx)
 
+    // Y축 회전 후 X축 회전
     const proj = (x:number,y:number,z:number) => {
-      const rx=cr*x+sr*z, rz=-sr*x+cr*z
-      return { px: rx, py: -ca*rz+sa*y }
+      // Y축 회전
+      const x1= cry*x + sry*z
+      const z1=-sry*x + cry*z
+      // X축 회전
+      const y2= crx*y - srx*z1
+      const z2= srx*y + crx*z1
+      return { px: x1, py: y2, pz: z2 }
     }
 
     const tris: {d:number;pts:{px:number;py:number}[];nx:number;ny:number;nz:number}[] = []
-    for (let i=0;i<verts.length;i+=9) {
+    for (let i=0; i<verts.length; i+=9) {
       const pts=[]
       let d=0
-      for (let j=0;j<3;j++) {
-        const p=proj((verts[i+j*3]-cx)*scale,(verts[i+j*3+1]-cy)*scale,(verts[i+j*3+2]-cz)*scale)
-        pts.push({px:p.px+W/2,py:p.py+H/2}); d+=verts[i+j*3+2]
+      for (let j=0; j<3; j++) {
+        const p = proj((verts[i+j*3]-cx)*scale, (verts[i+j*3+1]-cy)*scale, (verts[i+j*3+2]-cz)*scale)
+        pts.push({px: p.px+W/2, py: -p.py+H/2}); d += p.pz
       }
-      const ax2=verts[i+3]-verts[i],ay2=verts[i+4]-verts[i+1],az2=verts[i+5]-verts[i+2]
-      const bx2=verts[i+6]-verts[i],by2=verts[i+7]-verts[i+1],bz2=verts[i+8]-verts[i+2]
-      const nx=ay2*bz2-az2*by2,ny=az2*bx2-ax2*bz2,nz=ax2*by2-ay2*bx2
+      // 노멀
+      const ax2=verts[i+3]-verts[i], ay2=verts[i+4]-verts[i+1], az2=verts[i+5]-verts[i+2]
+      const bx2=verts[i+6]-verts[i], by2=verts[i+7]-verts[i+1], bz2=verts[i+8]-verts[i+2]
+      const nx=ay2*bz2-az2*by2, ny=az2*bx2-ax2*bz2, nz=ax2*by2-ay2*bx2
       const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1
-      tris.push({d:d/3,pts,nx:nx/nl,ny:ny/nl,nz:nz/nl})
+      tris.push({d:d/3, pts, nx:nx/nl, ny:ny/nl, nz:nz/nl})
     }
     tris.sort((a,b)=>a.d-b.d)
-    const lx=0.5,ly=0.8,lz=0.3,ll=Math.sqrt(lx*lx+ly*ly+lz*lz)
+
+    const lx=0.4, ly=0.7, lz=0.6, ll=Math.sqrt(lx*lx+ly*ly+lz*lz)
     for (const t of tris) {
-      const diff=Math.max(0,(t.nx*lx/ll+t.ny*ly/ll+t.nz*lz/ll))
-      const b=Math.round(40+diff*180)
+      const diff = Math.max(0, t.nx*lx/ll + t.ny*ly/ll + t.nz*lz/ll)
+      const amb = 0.25
+      const bright = Math.round((amb + diff*(1-amb)) * 220)
       ctx.beginPath()
-      ctx.moveTo(t.pts[0].px,t.pts[0].py)
-      ctx.lineTo(t.pts[1].px,t.pts[1].py)
-      ctx.lineTo(t.pts[2].px,t.pts[2].py)
+      ctx.moveTo(t.pts[0].px, t.pts[0].py)
+      ctx.lineTo(t.pts[1].px, t.pts[1].py)
+      ctx.lineTo(t.pts[2].px, t.pts[2].py)
       ctx.closePath()
-      ctx.fillStyle=`rgb(${Math.round(b*0.3)},${Math.round(b*0.5)},${b})`
+      ctx.fillStyle = `rgb(${Math.round(bright*0.28)},${Math.round(bright*0.48)},${bright})`
       ctx.fill()
     }
   }
 
-  const onMouseDown = (e: React.MouseEvent) => { dragging.current=true; lastX.current=e.clientX }
-  const onMouseMove = (e: React.MouseEvent) => {
-    if (!dragging.current||!canvasRef.current||!vertsRef.current||!bboxRef.current) return
-    const dx=(e.clientX-lastX.current)*0.01; lastX.current=e.clientX
-    rotRef.current+=dx; setRotate(r=>r+dx)
+  const onMouseDown = (e: React.MouseEvent) => {
+    dragging.current = true; lastX.current = e.clientX; lastY.current = e.clientY
   }
-  const onMouseUp = () => { dragging.current=false }
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!dragging.current) return
+    const dx = (e.clientX - lastX.current) * 0.008
+    const dy = (e.clientY - lastY.current) * 0.008
+    lastX.current = e.clientX; lastY.current = e.clientY
+    rotY.current += dx
+    rotX.current += dy
+    // X축 회전 범위 제한 (-90° ~ +90°)
+    rotX.current = Math.max(-Math.PI/2, Math.min(Math.PI/2, rotX.current))
+    setTick(t => t+1)
+  }
+  const onMouseUp = () => { dragging.current = false }
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    zoom.current *= e.deltaY > 0 ? 0.9 : 1.1
+    zoom.current = Math.max(0.2, Math.min(5.0, zoom.current))
+    setTick(t => t+1)
+  }
 
   return (
     <div style={{borderRadius:12,overflow:'hidden',border:'1.5px solid #e5e7eb',marginBottom:16}}>
-      <div style={{position:'relative',background:'#f9fafb',height:280,cursor:'ew-resize'}}
-        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+      <div style={{position:'relative',background:'#f9fafb',height:300,cursor:dragging.current?'grabbing':'grab'}}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+        onWheel={onWheel}>
         {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10,color:'#6b7280'}}>
           <div style={{fontSize:32}}>⏳</div><div style={{fontSize:13}}>3D 모델 분석 중...</div>
         </div>}
         {err&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#9ca3af'}}>
           <div style={{fontSize:32}}>📄</div><div style={{fontSize:13}}>미리보기를 불러올 수 없습니다</div>
         </div>}
-        <canvas ref={canvasRef} width={700} height={280} style={{width:'100%',height:'100%',display:loading||err?'none':'block'}}/>
-        {!loading&&!err&&<div style={{position:'absolute',bottom:8,right:10,fontSize:11,color:'#9ca3af',background:'rgba(255,255,255,0.8)',padding:'3px 8px',borderRadius:6}}>
-          ← 드래그하여 회전 →
+        <canvas ref={canvasRef} width={720} height={300}
+          style={{width:'100%',height:'100%',display:loading||err?'none':'block'}}/>
+        {!loading&&!err&&<div style={{position:'absolute',bottom:8,right:10,fontSize:11,color:'#9ca3af',
+          background:'rgba(255,255,255,0.85)',padding:'4px 10px',borderRadius:6,pointerEvents:'none'}}>
+          🖱 드래그: 360° 회전 &nbsp;|&nbsp; 휠: 확대/축소
         </div>}
       </div>
       {info&&(
