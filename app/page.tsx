@@ -471,23 +471,34 @@ export default function Home() {
               <div style={S.grp}><label style={S.lbl}>연락처</label><input type="tel" value={form.phone} onChange={e=>upd('phone',e.target.value)} placeholder="010-0000-0000"/></div>
             </div>
             <label style={{...S.lbl,display:'block',marginBottom:8}}>3D 파일 업로드 *</label>
+            {/* 숨김 파일 input */}
+            <input ref={fileRef} type="file" accept="*/*" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
+
+            {/* PC: 드래그앤드롭 영역 */}
             <div onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
               onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0])}}
-              onClick={()=>fileRef.current?.click()}
               style={{border:`2px dashed ${drag?'#2563eb':form.file?'#16a34a':'#d1d5db'}`,borderRadius:12,
-                padding:form.file&&showViewer?'14px 20px':'32px 20px',textAlign:'center',cursor:'pointer',
-                marginBottom:16,background:drag?'#eff6ff':form.file?'#f0fdf4':'#f9fafb',transition:'all .15s'}}>
-              <input ref={fileRef} type="file" accept="*/*" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
+                padding:form.file&&showViewer?'14px 20px':'28px 20px',textAlign:'center',
+                marginBottom:10,background:drag?'#eff6ff':form.file?'#f0fdf4':'#f9fafb',transition:'all .15s'}}>
               {form.file?<>
                 <div style={{fontSize:24,marginBottom:6}}>📄</div>
                 <div style={{fontWeight:600,marginBottom:3}}>{form.file.name}</div>
-                <div style={{fontSize:12,color:'#6b7280'}}>클릭하여 파일 변경</div>
+                <div style={{fontSize:12,color:'#6b7280'}}>아래 버튼을 눌러 파일 변경</div>
               </>:<>
-                <div style={{fontSize:40,marginBottom:10}}>☁️</div>
-                <div style={{fontWeight:600,marginBottom:4}}>파일을 드래그하거나 클릭하여 업로드</div>
+                <div style={{fontSize:36,marginBottom:8}}>☁️</div>
+                <div style={{fontWeight:600,marginBottom:4}}>PC: 파일을 이 영역에 드래그</div>
                 <div style={{fontSize:12,color:'#6b7280'}}>지원 형식: STL · OBJ · 3MF · STEP · IGES</div>
               </>}
             </div>
+
+            {/* 파일 선택 버튼 (PC + 모바일 공통) */}
+            <button
+              onClick={()=>fileRef.current?.click()}
+              style={{width:'100%',padding:'11px 0',marginBottom:16,borderRadius:10,
+                border:'1.5px solid #2563eb',background:'#eff6ff',color:'#2563eb',
+                fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              📂 {form.file ? '다른 파일 선택' : '파일 선택 (파일 앱 / 탐색기)'}
+            </button>
             {form.file&&showViewer&&<STLViewer file={form.file} onAnalyzed={onAnalyzed}/>}
             {form.file&&!showViewer&&(
               <div style={{...S.alert,background:'#fffbeb',border:'1px solid #fcd34d',color:'#92400e'}}>
