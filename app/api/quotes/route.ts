@@ -7,7 +7,6 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 // 견적 번호 생성
 async function getNextQuoteNo(): Promise<string> {
-  const supabaseAdmin = getSupabaseAdmin()
   const { count } = await supabaseAdmin
     .from('quotes')
     .select('*', { count: 'exact', head: true })
@@ -40,13 +39,27 @@ export async function POST(req: NextRequest) {
     let file_path: string | null = null
     let file_name: string | null = null
     if (file && file.size > 0) {
-      file_name = file.name
-      const ext = file.name.split('.').pop()
-      const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+      // 원본 확장자 추출
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'stl'
+      // 날짜 포맷
+      const now = new Date()
+      const yyyy = now.getFullYear().toString()
+      const mm   = String(now.getMonth()+1).padStart(2,'0')
+      const dd   = String(now.getDate()).padStart(2,'0')
+      const dateStr = `${yyyy}${mm}${dd}`
+      // 원본 파일명 (확장자 제외, 특수문자 → _)
+      const origName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+      // 고객명 특수문자 제거
+      const safeName = name.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+      // 저장 파일명: YYYYMMDD_Q-001_고객명_원본파일명.ext
+      file_name = `${dateStr}_${quote_no}_${safeName}_${origName}.${ext}`
+      // 폴더 구조: 2026/05/13/Q-001/파일명
+      const storagePath = `${yyyy}/${mm}/${dd}/${quote_no}/${file_name}`
+      // Supabase Storage 업로드
       const { error: upErr } = await supabaseAdmin.storage
         .from('quote-files')
-        .upload(path, file)
-      if (!upErr) file_path = path
+        .upload(storagePath, file, { upsert: false })
+      if (!upErr) file_path = storagePath
     }
 
     const quote_no  = await getNextQuoteNo()
