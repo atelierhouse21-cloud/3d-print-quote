@@ -7,6 +7,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 // 견적 번호 생성
 async function getNextQuoteNo(): Promise<string> {
+  const supabaseAdmin = getSupabaseAdmin()
   const { count } = await supabaseAdmin
     .from('quotes')
     .select('*', { count: 'exact', head: true })
