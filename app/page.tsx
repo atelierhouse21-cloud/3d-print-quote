@@ -477,7 +477,7 @@ export default function Home() {
               style={{border:`2px dashed ${drag?'#2563eb':form.file?'#16a34a':'#d1d5db'}`,borderRadius:12,
                 padding:form.file&&showViewer?'14px 20px':'32px 20px',textAlign:'center',cursor:'pointer',
                 marginBottom:16,background:drag?'#eff6ff':form.file?'#f0fdf4':'#f9fafb',transition:'all .15s'}}>
-              <input ref={fileRef} type="file" accept=".stl,.obj,.3mf,.step,.stp,.iges,*/*" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
+              <input ref={fileRef} type="file" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
               {form.file?<>
                 <div style={{fontSize:24,marginBottom:6}}>📄</div>
                 <div style={{fontWeight:600,marginBottom:3}}>{form.file.name}</div>
