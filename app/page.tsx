@@ -220,18 +220,26 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
     setTick(t => t+1)
   }
   const onMouseUp = () => { dragging.current = false }
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault()
-    zoom.current *= e.deltaY > 0 ? 0.9 : 1.1
-    zoom.current = Math.max(0.2, Math.min(5.0, zoom.current))
-    setTick(t => t+1)
-  }
+  const viewerRef = useRef<HTMLDivElement>(null)
+
+  // passive:false 로 휠 이벤트 직접 등록 (React 기본값은 passive:true 라 preventDefault 불가)
+  useEffect(() => {
+    const el = viewerRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      zoom.current *= e.deltaY > 0 ? 0.9 : 1.1
+      zoom.current = Math.max(0.2, Math.min(5.0, zoom.current))
+      setTick(t => t+1)
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [])
 
   return (
     <div style={{borderRadius:12,overflow:'hidden',border:'1.5px solid #e5e7eb',marginBottom:16}}>
-      <div style={{position:'relative',background:'#f9fafb',height:300,cursor:dragging.current?'grabbing':'grab'}}
-        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-        onWheel={onWheel}>
+      <div ref={viewerRef} style={{position:'relative',background:'#f9fafb',height:300,cursor:dragging.current?'grabbing':'grab'}}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
         {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10,color:'#6b7280'}}>
           <div style={{fontSize:32}}>⏳</div><div style={{fontSize:13}}>3D 모델 분석 중...</div>
         </div>}
