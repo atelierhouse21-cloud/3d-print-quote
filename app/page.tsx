@@ -472,7 +472,7 @@ export default function Home() {
             </div>
             <label style={{...S.lbl,display:'block',marginBottom:8}}>3D 파일 업로드 *</label>
             {/* 숨김 파일 input */}
-            <input ref={fileRef} type="file" accept="*/*" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
+            <input ref={fileRef} type="file" accept="application/octet-stream,.stl,.obj,.3mf,.step,.stp,.iges" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
 
             {/* PC: 드래그앤드롭 영역 */}
             <div onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
