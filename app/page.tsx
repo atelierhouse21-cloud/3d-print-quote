@@ -104,7 +104,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
     const ctx = canvas.getContext('2d'); if (!ctx) return
     const W=canvas.width, H=canvas.height
     ctx.clearRect(0,0,W,H); ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,W,H)
-    const baseScale = Math.min(W,H)*0.80/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
+    const baseScale = Math.min(W,H)*0.90/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
     const scale=baseScale*zoom.current
     const cx=bbox.cx,cy=bbox.cy,cz=bbox.cz
     const cry=Math.cos(rotY.current),sry=Math.sin(rotY.current)
