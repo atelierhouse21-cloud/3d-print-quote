@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { calcPrice, calcDays } from '@/lib/constants'
 import { Resend } from 'resend'
-
+  
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 // 견적 번호 생성
