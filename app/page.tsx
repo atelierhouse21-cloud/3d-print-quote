@@ -116,6 +116,8 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
   const dragging = useRef(false)
   const lastX = useRef(0)
   const lastY = useRef(0)
+  const lastPinchDist = useRef(0)
+  const touching = useRef(false)
   const vertsRef = useRef<Float32Array|null>(null)
   const bboxRef = useRef<ReturnType<typeof calcBBox>|null>(null)
   const rotY = useRef(0.4)   // 수평 회전 (Y축)
@@ -265,26 +267,70 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
     setTick(t => t+1)
   }
   const onMouseUp = () => { dragging.current = false }
+
+  // ── 터치 이벤트 (모바일) ────────────────────────────
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touching.current = true
+      lastX.current = e.touches[0].clientX
+      lastY.current = e.touches[0].clientY
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      lastPinchDist.current = Math.sqrt(dx*dx + dy*dy)
+    }
+  }
+  const onTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault()
+    if (e.touches.length === 1 && touching.current) {
+      const dx = (e.touches[0].clientX - lastX.current) * 0.01
+      const dy = (e.touches[0].clientY - lastY.current) * 0.01
+      lastX.current = e.touches[0].clientX
+      lastY.current = e.touches[0].clientY
+      rotY.current += dx
+      rotX.current += dy
+      rotX.current = Math.max(-Math.PI/2, Math.min(Math.PI/2, rotX.current))
+      setTick(t => t+1)
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx*dx + dy*dy)
+      if (lastPinchDist.current > 0) {
+        zoom.current *= dist / lastPinchDist.current
+        zoom.current = Math.max(0.2, Math.min(5.0, zoom.current))
+        setTick(t => t+1)
+      }
+      lastPinchDist.current = dist
+    }
+  }
+  const onTouchEnd = () => { touching.current = false; lastPinchDist.current = 0 }
+
   const viewerRef = useRef<HTMLDivElement>(null)
 
-  // passive:false 로 휠 이벤트 직접 등록 (React 기본값은 passive:true 라 preventDefault 불가)
+  // passive:false 로 휠/터치 이벤트 직접 등록
   useEffect(() => {
     const el = viewerRef.current
     if (!el) return
-    const handler = (e: WheelEvent) => {
+    const wheelHandler = (e: WheelEvent) => {
       e.preventDefault()
       zoom.current *= e.deltaY > 0 ? 0.9 : 1.1
       zoom.current = Math.max(0.2, Math.min(5.0, zoom.current))
       setTick(t => t+1)
     }
-    el.addEventListener('wheel', handler, { passive: false })
-    return () => el.removeEventListener('wheel', handler)
+    const touchHandler = (e: TouchEvent) => { if (e.touches.length > 1) e.preventDefault() }
+    el.addEventListener('wheel', wheelHandler, { passive: false })
+    el.addEventListener('touchmove', touchHandler, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', wheelHandler)
+      el.removeEventListener('touchmove', touchHandler)
+    }
   }, [])
 
   return (
     <div style={{borderRadius:12,overflow:'hidden',border:'1.5px solid #e5e7eb',marginBottom:16}}>
-      <div ref={viewerRef} style={{position:'relative',background:'#f9fafb',height:300,cursor:dragging.current?'grabbing':'grab'}}
-        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+      <div ref={viewerRef} style={{position:'relative',background:'#f9fafb',height:300,cursor:dragging.current?'grabbing':'grab',touchAction:'none'}}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10,color:'#6b7280'}}>
           <div style={{fontSize:32}}>⏳</div><div style={{fontSize:13}}>3D 모델 분석 중...</div>
         </div>}
@@ -295,7 +341,7 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
           style={{width:'100%',height:'100%',display:loading||err?'none':'block'}}/>
         {!loading&&!err&&<div style={{position:'absolute',bottom:8,right:10,fontSize:11,color:'#9ca3af',
           background:'rgba(255,255,255,0.85)',padding:'4px 10px',borderRadius:6,pointerEvents:'none'}}>
-          🖱 드래그: 360° 회전 &nbsp;|&nbsp; 휠: 확대/축소
+          🖱 드래그·터치: 회전 &nbsp;|&nbsp; 휠·핀치: 확대/축소
         </div>}
       </div>
       {info&&(
@@ -431,7 +477,7 @@ export default function Home() {
               style={{border:`2px dashed ${drag?'#2563eb':form.file?'#16a34a':'#d1d5db'}`,borderRadius:12,
                 padding:form.file&&showViewer?'14px 20px':'32px 20px',textAlign:'center',cursor:'pointer',
                 marginBottom:16,background:drag?'#eff6ff':form.file?'#f0fdf4':'#f9fafb',transition:'all .15s'}}>
-              <input ref={fileRef} type="file" accept=".stl,.obj,.3mf,.step,.stp,.iges" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
+              <input ref={fileRef} type="file" accept=".stl,.obj,.3mf,.step,.stp,.iges,*/*" style={{display:'none'}} onChange={e=>handleFile(e.target.files?.[0]||null)}/>
               {form.file?<>
                 <div style={{fontSize:24,marginBottom:6}}>📄</div>
                 <div style={{fontWeight:600,marginBottom:3}}>{form.file.name}</div>
