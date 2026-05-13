@@ -153,7 +153,7 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
     if (!ctx) return
     const W = canvas.width, H = canvas.height
     ctx.clearRect(0,0,W,H)
-    ctx.fillStyle = '#f9fafb'; ctx.fillRect(0,0,W,H)
+    ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0,0,W,H)
 
     const baseScale = Math.min(W,H) * 0.45 / Math.max(bbox.x||1, bbox.y||1, bbox.z||1)
     const scale = baseScale * zoom.current
@@ -162,57 +162,85 @@ function STLViewer({ file, onAnalyzed }: { file:File; onAnalyzed:(i:STLInfo)=>vo
     const cry=Math.cos(ry), sry=Math.sin(ry)
     const crx=Math.cos(rx), srx=Math.sin(rx)
 
-    // Y축 회전 후 X축 회전
-    const proj = (x:number,y:number,z:number) => {
-      // Y축 회전
-      const x1= cry*x + sry*z
-      const z1=-sry*x + cry*z
-      // X축 회전
-      const y2= crx*y - srx*z1
-      const z2= srx*y + crx*z1
-      return { px: x1, py: y2, pz: z2 }
+    // 3D 좌표 → 회전 후 스크린 좌표 변환
+    const transform = (x:number, y:number, z:number) => {
+      const x1 = cry*x + sry*z
+      const z1 = -sry*x + cry*z
+      const y2 = crx*y - srx*z1
+      const z2 = srx*y + crx*z1
+      return { px: x1 + W/2, py: -y2 + H/2, pz: z2 }
     }
 
-    const tris: {d:number;pts:{px:number;py:number}[];nx:number;ny:number;nz:number}[] = []
+    // 뷰 공간 노멀 변환 (조명 계산용)
+    const transformNormal = (nx:number, ny:number, nz:number) => {
+      const nx1 = cry*nx + sry*nz
+      const nz1 = -sry*nx + cry*nz
+      const ny2 = crx*ny - srx*nz1
+      const nz2 = srx*ny + crx*nz1
+      return { nx:nx1, ny:ny2, nz:nz2 }
+    }
+
+    type Tri = { depth:number; pts:{px:number;py:number}[]; wnx:number; wny:number; wnz:number }
+    const tris: Tri[] = []
+
     for (let i=0; i<verts.length; i+=9) {
-      const pts=[]
-      let d=0
-      for (let j=0; j<3; j++) {
-        const p = proj((verts[i+j*3]-cx)*scale, (verts[i+j*3+1]-cy)*scale, (verts[i+j*3+2]-cz)*scale)
-        pts.push({px: p.px+W/2, py: -p.py+H/2}); d += p.pz
-      }
-      // 노멀
-      const ax2=verts[i+3]-verts[i], ay2=verts[i+4]-verts[i+1], az2=verts[i+5]-verts[i+2]
-      const bx2=verts[i+6]-verts[i], by2=verts[i+7]-verts[i+1], bz2=verts[i+8]-verts[i+2]
-      const nx=ay2*bz2-az2*by2, ny=az2*bx2-ax2*bz2, nz=ax2*by2-ay2*bx2
-      const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1
-      tris.push({d:d/3, pts, nx:nx/nl, ny:ny/nl, nz:nz/nl})
-    }
-    tris.sort((a,b)=>a.d-b.d)
+      // 월드 노멀 계산
+      const ax2=verts[i+3]-verts[i],   ay2=verts[i+4]-verts[i+1], az2=verts[i+5]-verts[i+2]
+      const bx2=verts[i+6]-verts[i],   by2=verts[i+7]-verts[i+1], bz2=verts[i+8]-verts[i+2]
+      const wnx=ay2*bz2-az2*by2, wny=az2*bx2-ax2*bz2, wnz=ax2*by2-ay2*bx2
+      const nl=Math.sqrt(wnx*wnx+wny*wny+wnz*wnz)||1
 
-    // 3방향 조명으로 자연스러운 음영
-    const lights = [
-      { x:0.6,  y:0.8,  z:0.4,  intensity:0.55 },
-      { x:-0.5, y:0.3,  z:0.2,  intensity:0.25 },
-      { x:0.1,  y:-0.4, z:-0.6, intensity:0.10 },
-    ]
+      // 스크린 투영
+      const p0 = transform((verts[i]  -cx)*scale, (verts[i+1]-cy)*scale, (verts[i+2]-cz)*scale)
+      const p1 = transform((verts[i+3]-cx)*scale, (verts[i+4]-cy)*scale, (verts[i+5]-cz)*scale)
+      const p2 = transform((verts[i+6]-cx)*scale, (verts[i+7]-cy)*scale, (verts[i+8]-cz)*scale)
+
+      // ── 백페이스 컬링 ──────────────────────────────────
+      // 스크린 공간 외적의 z 성분으로 앞/뒤 판단
+      const e1x=p1.px-p0.px, e1y=p1.py-p0.py
+      const e2x=p2.px-p0.px, e2y=p2.py-p0.py
+      const cross = e1x*e2y - e1y*e2x
+      if (cross >= 0) continue  // 카메라 반대 방향 → 스킵
+
+      const depth = (p0.pz + p1.pz + p2.pz) / 3
+      tris.push({ depth, pts:[p0,p1,p2], wnx:wnx/nl, wny:wny/nl, wnz:wnz/nl })
+    }
+
+    // 뒤에서 앞 순서로 정렬 (painter's algorithm)
+    tris.sort((a,b) => a.depth - b.depth)
+
+    // ── 조명 설정 (월드 공간 기준) ──────────────────────
+    // 주 광원: 오른쪽 위 앞
+    // 보조 광원: 왼쪽 위
+    // 환경광: 전방향
+    const L1 = { x:0.6, y:0.9, z:0.5 }
+    const l1len = Math.sqrt(L1.x**2+L1.y**2+L1.z**2)
+    const L2 = { x:-0.4, y:0.5, z:-0.3 }
+    const l2len = Math.sqrt(L2.x**2+L2.y**2+L2.z**2)
+
     for (const t of tris) {
-      let diff = 0
-      for (const l of lights) {
-        const ll = Math.sqrt(l.x*l.x+l.y*l.y+l.z*l.z)
-        diff += Math.max(0, t.nx*l.x/ll + t.ny*l.y/ll + t.nz*l.z/ll) * l.intensity
-      }
-      const amb = 0.38
-      const bright = amb + diff * (1 - amb)
-      // 회색 계열 색상
-      const lo = 80, hi = 235
-      const v = Math.round(lo + bright * (hi - lo))
+      const { wnx, wny, wnz } = t
+
+      const d1 = Math.max(0, wnx*L1.x/l1len + wny*L1.y/l1len + wnz*L1.z/l1len)
+      const d2 = Math.max(0, wnx*L2.x/l2len + wny*L2.y/l2len + wnz*L2.z/l2len)
+
+      const ambient   = 0.30
+      const diffuse   = d1 * 0.55 + d2 * 0.18
+      const bright    = Math.min(1, ambient + diffuse)
+
+      // 밝기 범위: 어두운 면 105 ~ 밝은 면 238 (타사 화면과 유사)
+      const lo=105, hi=238
+      const v = Math.round(lo + bright * (hi-lo))
+
+      // 삼각형 0.5px 확장 → 면 사이 틈새(메쉬선) 제거
+      const [q0,q1,q2] = t.pts
+      const tcx=(q0.px+q1.px+q2.px)/3, tcy=(q0.py+q1.py+q2.py)/3
+      const ep = t.pts.map(p => ({
+        px: tcx + (p.px-tcx)*1.008 + (p.px-tcx > 0 ? 0.5 : -0.5),
+        py: tcy + (p.py-tcy)*1.008 + (p.py-tcy > 0 ? 0.5 : -0.5),
+      }))
+
       ctx.beginPath()
-      // 삼각형을 0.6px 살짝 확장하여 메쉬 라인(틈새) 제거
-      const [p0,p1,p2] = t.pts
-      const cx2=(p0.px+p1.px+p2.px)/3, cy2=(p0.py+p1.py+p2.py)/3
-      const expand = 0.6
-      const ep = t.pts.map(p=>({ px: cx2+(p.px-cx2)*(1+expand/Math.max(1,Math.abs(p.px-cx2)+Math.abs(p.py-cy2))), py: cy2+(p.py-cy2)*(1+expand/Math.max(1,Math.abs(p.px-cx2)+Math.abs(p.py-cy2))) }))
       ctx.moveTo(ep[0].px, ep[0].py)
       ctx.lineTo(ep[1].px, ep[1].py)
       ctx.lineTo(ep[2].px, ep[2].py)
