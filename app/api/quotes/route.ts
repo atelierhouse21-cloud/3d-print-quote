@@ -61,10 +61,16 @@ export async function POST(req: NextRequest) {
       // 폴더 구조: 2026/05/13/Q-001/파일명
       const storagePath = `${yyyy}/${mm}/${dd}/${quote_no}/${file_name}`
       // Supabase Storage 업로드
-      const { error: upErr } = await supabaseAdmin.storage
+      console.log('[UPLOAD] 시도:', storagePath, 'size:', file.size)
+      const { data: upData, error: upErr } = await supabaseAdmin.storage
         .from('quote-files')
         .upload(storagePath, file, { upsert: false })
-      if (!upErr) file_path = storagePath
+      if (upErr) {
+        console.error('[UPLOAD] 실패:', JSON.stringify(upErr))
+      } else {
+        console.log('[UPLOAD] 성공:', upData)
+        file_path = storagePath
+      }
     }
 
     const { data, error } = await supabaseAdmin
