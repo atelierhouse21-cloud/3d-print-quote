@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
     const vol      = parseFloat(formData.get('vol') as string) || 0
     const file     = formData.get('file') as File | null
 
+    // 견적 번호 먼저 생성 (파일명에 사용)
+    const quote_no  = await getNextQuoteNo()
+    const auto_price = vol > 0 ? calcPrice(method, vol, qm, qty, infill) : null
+
     // 파일 업로드 (Supabase Storage)
     let file_path: string | null = null
     let file_name: string | null = null
@@ -62,9 +66,6 @@ export async function POST(req: NextRequest) {
         .upload(storagePath, file, { upsert: false })
       if (!upErr) file_path = storagePath
     }
-
-    const quote_no  = await getNextQuoteNo()
-    const auto_price = vol > 0 ? calcPrice(method, vol, qm, qty, infill) : null
 
     const { data, error } = await supabaseAdmin
       .from('quotes')
