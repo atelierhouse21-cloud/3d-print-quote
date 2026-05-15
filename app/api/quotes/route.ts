@@ -95,50 +95,76 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
-    // 고객 확인 이메일
-    await resend.emails.send({
-      from: process.env.FROM_EMAIL!,
+    // ── 고객 접수 확인 이메일 ──────────────────────────
+    const fromEmail = process.env.FROM_EMAIL!
+    const adminEmail = process.env.ADMIN_EMAIL!
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
+
+    console.log('[EMAIL] FROM:', fromEmail, '/ TO(고객):', email, '/ TO(관리자):', adminEmail)
+
+    const customerEmailResult = await resend.emails.send({
+      from: fromEmail,
       to: email,
       subject: `[${quote_no}] 3D 프린팅 견적 요청이 접수되었습니다`,
       html: `
-        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;">
-          <h2 style="font-size:20px;margin-bottom:8px;">견적 요청 접수 확인</h2>
-          <p style="color:#6b7280;margin-bottom:24px;">안녕하세요 <b>${name}</b>님, 견적 요청이 정상적으로 접수되었습니다.</p>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;">
-            <tr><td style="padding:8px 0;color:#6b7280;">견적 번호</td><td style="padding:8px 0;font-weight:600;">${quote_no}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">출력 방식</td><td style="padding:8px 0;">${method}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">소재</td><td style="padding:8px 0;">${material}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">수량</td><td style="padding:8px 0;">${qty}개</td></tr>
-            ${auto_price ? `<tr><td style="padding:8px 0;color:#6b7280;">예상 금액</td><td style="padding:8px 0;font-weight:700;">₩${auto_price.toLocaleString('ko-KR')}</td></tr>` : ''}
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <div style="margin-bottom:24px;">
+            <h2 style="font-size:20px;margin:0 0 6px;color:#1a1a1a;">🖨️ 견적 요청 접수 확인</h2>
+            <p style="color:#6b7280;margin:0;font-size:14px;">안녕하세요 <b>${name}</b>님, 견적 요청이 정상적으로 접수되었습니다.</p>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;color:#2563eb;">${quote_no}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">출력 방식</td><td style="padding:10px 0;">${method}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">소재</td><td style="padding:10px 0;">${material}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">색상</td><td style="padding:10px 0;">${color}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">수량</td><td style="padding:10px 0;">${qty}개</td></tr>
+            ${file_name ? `<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">파일명</td><td style="padding:10px 0;">${file_name}</td></tr>` : ''}
+            ${auto_price ? `<tr><td style="padding:10px 0;color:#6b7280;">예상 금액</td><td style="padding:10px 0;font-weight:700;font-size:16px;color:#15803d;">₩${auto_price.toLocaleString('ko-KR')} (VAT 별도)</td></tr>` : ''}
           </table>
-          <p style="margin-top:24px;color:#6b7280;font-size:13px;">담당자 검토 후 1~2 영업일 이내 최종 견적을 안내드립니다.</p>
+          ${note ? `<div style="background:#f9fafb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#374151;"><b>요청 사항:</b> ${note}</div>` : ''}
+          <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
+            담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다.
+          </div>
         </div>
       `,
-    }).catch(() => {}) // 이메일 실패해도 견적 접수는 유지
+    })
+    if (customerEmailResult.error) {
+      console.error('[EMAIL] 고객 발송 실패:', JSON.stringify(customerEmailResult.error))
+    } else {
+      console.log('[EMAIL] 고객 발송 성공:', customerEmailResult.data?.id)
+    }
 
-    // 관리자 알림 이메일
-    await resend.emails.send({
-      from: process.env.FROM_EMAIL!,
-      to: process.env.ADMIN_EMAIL!,
+    // ── 관리자 알림 이메일 ──────────────────────────────
+    const adminEmailResult = await resend.emails.send({
+      from: fromEmail,
+      to: adminEmail,
       subject: `[새 견적 ${quote_no}] ${name} — ${method} ${qty}개`,
       html: `
-        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;">
-          <h2 style="font-size:20px;margin-bottom:16px;">새 견적 요청 접수</h2>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;">
-            <tr><td style="padding:8px 0;color:#6b7280;">견적 번호</td><td style="padding:8px 0;font-weight:600;">${quote_no}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">고객</td><td style="padding:8px 0;">${name} (${company || '개인'}) / ${email}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">방식 / 소재</td><td style="padding:8px 0;">${method} / ${material}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">색상 / 품질</td><td style="padding:8px 0;">${color} / ${quality}</td></tr>
-            <tr><td style="padding:8px 0;color:#6b7280;">수량</td><td style="padding:8px 0;">${qty}개</td></tr>
-            ${vol > 0 ? `<tr><td style="padding:8px 0;color:#6b7280;">추정 부피</td><td style="padding:8px 0;">~${vol} cm³</td></tr>` : ''}
-            ${auto_price ? `<tr><td style="padding:8px 0;color:#6b7280;">자동 견적가</td><td style="padding:8px 0;font-weight:700;">₩${auto_price.toLocaleString('ko-KR')}</td></tr>` : ''}
-            ${note ? `<tr><td style="padding:8px 0;color:#6b7280;">요청 사항</td><td style="padding:8px 0;">${note}</td></tr>` : ''}
-            ${file_name ? `<tr><td style="padding:8px 0;color:#6b7280;">업로드 파일</td><td style="padding:8px 0;">${file_name}</td></tr>` : ''}
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <h2 style="font-size:18px;margin:0 0 20px;color:#1a1a1a;">📋 새 견적 요청이 접수되었습니다</h2>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;color:#2563eb;">${quote_no}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">고객명</td><td style="padding:10px 0;font-weight:600;">${name} (${company || '개인'})</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">연락처</td><td style="padding:10px 0;">${email}${phone ? ' / ' + phone : ''}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">방식 / 소재</td><td style="padding:10px 0;">${method} / ${material}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">색상 / 품질</td><td style="padding:10px 0;">${color} / ${quality}</td></tr>
+            <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">수량</td><td style="padding:10px 0;">${qty}개</td></tr>
+            ${vol > 0 ? `<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">추정 부피</td><td style="padding:10px 0;">~${vol} cm³</td></tr>` : ''}
+            ${auto_price ? `<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">자동 견적가</td><td style="padding:10px 0;font-weight:700;color:#15803d;">₩${auto_price.toLocaleString('ko-KR')}</td></tr>` : ''}
+            ${file_name ? `<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">업로드 파일</td><td style="padding:10px 0;">${file_name}</td></tr>` : ''}
+            ${note ? `<tr><td style="padding:10px 0;color:#6b7280;">요청 사항</td><td style="padding:10px 0;">${note}</td></tr>` : ''}
           </table>
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin" style="display:inline-block;margin-top:20px;padding:10px 20px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;">관리자 페이지에서 확인하기</a>
+          <a href="${siteUrl}/admin" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
+            👉 관리자 페이지에서 확인하기
+          </a>
         </div>
       `,
-    }).catch(() => {})
+    })
+    if (adminEmailResult.error) {
+      console.error('[EMAIL] 관리자 발송 실패:', JSON.stringify(adminEmailResult.error))
+    } else {
+      console.log('[EMAIL] 관리자 발송 성공:', adminEmailResult.data?.id)
+    }
 
     return NextResponse.json({ ok: true, quote_no })
   } catch (e: any) {
