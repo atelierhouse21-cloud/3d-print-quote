@@ -54,12 +54,18 @@ export async function POST(req: NextRequest) {
       const dateStr = `${yyyy}${mm}${dd}`
       // 원본 파일명 (확장자 제외, 특수문자 → _)
       const origName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
-      // 고객명 특수문자 제거
-      const safeName = name.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
-      // 저장 파일명: YYYYMMDD_Q-001_고객명_원본파일명.ext
-      file_name = `${dateStr}_${quote_no}_${safeName}_${origName}.${ext}`
-      // 폴더 구조: 2026/05/13/Q-001/파일명
-      const storagePath = `${yyyy}/${mm}/${dd}/${quote_no}/${file_name}`
+      // DB용 파일명: 한글 포함 (사람이 읽기 쉬운 형식)
+      const displayName = name.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+      const displayOrig = origName.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+      file_name = `${dateStr}_${quote_no}_${displayName}_${displayOrig}.${ext}`
+
+      // Storage용 경로: ASCII만 허용
+      // 한글 등 비ASCII 문자는 제거하고 빈 문자열이면 fallback 사용
+      const asciiName = name.replace(/[^a-zA-Z0-9_-]/g, '') || `cust${Date.now().toString().slice(-4)}`
+      const asciiOrig = origName.replace(/[^a-zA-Z0-9_-]/g, '') || `file${Date.now().toString().slice(-4)}`
+      const storageFileName = `${dateStr}_${quote_no}_${asciiName}_${asciiOrig}.${ext}`
+      // 폴더 구조: 2026/05/15/Q-001/파일명
+      const storagePath = `${yyyy}/${mm}/${dd}/${quote_no}/${storageFileName}`
       // Supabase Storage 업로드
       console.log('[UPLOAD] 시도:', storagePath, 'size:', file.size)
       const { data: upData, error: upErr } = await supabaseAdmin.storage
