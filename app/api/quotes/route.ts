@@ -19,64 +19,47 @@ async function getNextQuoteNo(): Promise<string> {
 export async function POST(req: NextRequest) {
   try {
     const supabaseAdmin = getSupabaseAdmin()
-    const formData = await req.formData()
+    const body = await req.json()
 
-    const name     = formData.get('name') as string
-    const email    = formData.get('email') as string
-    const company  = formData.get('company') as string
-    const phone    = formData.get('phone') as string
-    const note     = formData.get('note') as string
-    const method   = formData.get('method') as string
-    const material = formData.get('material') as string
-    const color    = formData.get('color') as string
-    const quality  = formData.get('quality') as string
-    const qty      = parseInt(formData.get('qty') as string)
-    const infill   = parseInt(formData.get('infill') as string) || 20
-    const qm       = parseFloat(formData.get('qm') as string) || 1.0
-    const vol      = parseFloat(formData.get('vol') as string) || 0
-    const file     = formData.get('file') as File | null
+    const name     = body.name as string
+    const email    = body.email as string
+    const company  = body.company as string
+    const phone    = body.phone as string
+    const note     = body.note as string
+    const method   = body.method as string
+    const material = body.material as string
+    const color    = body.color as string
+    const quality  = body.quality as string
+    const qty      = parseInt(body.qty)
+    const infill   = parseInt(body.infill) || 20
+    const qm       = parseFloat(body.qm) || 1.0
+    const vol      = parseFloat(body.vol) || 0
+    const fileName = body.fileName as string | null
 
     // 견적 번호 먼저 생성 (파일명에 사용)
     const quote_no  = await getNextQuoteNo()
     const auto_price = vol > 0 ? calcPrice(method, vol, qm, qty, infill) : null
 
-    // 파일 업로드 (Supabase Storage)
+    // 파일 경로 생성 (실제 업로드는 브라우저에서 직접 처리)
     let file_path: string | null = null
     let file_name: string | null = null
-    if (file && file.size > 0) {
-      // 원본 확장자 추출
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'stl'
-      // 날짜 포맷
+    let storage_path: string | null = null
+    if (fileName) {
+      const ext = fileName.split('.').pop()?.toLowerCase() || 'stl'
       const now = new Date()
       const yyyy = now.getFullYear().toString()
       const mm   = String(now.getMonth()+1).padStart(2,'0')
       const dd   = String(now.getDate()).padStart(2,'0')
       const dateStr = `${yyyy}${mm}${dd}`
-      // 원본 파일명 (확장자 제외, 특수문자 → _)
-      const origName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
-      // DB용 파일명: 한글 포함 (사람이 읽기 쉬운 형식)
+      const origName = fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
       const displayName = name.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
       const displayOrig = origName.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
       file_name = `${dateStr}_${quote_no}_${displayName}_${displayOrig}.${ext}`
-
-      // Storage용 경로: ASCII만 허용
-      // 한글 등 비ASCII 문자는 제거하고 빈 문자열이면 fallback 사용
       const asciiName = name.replace(/[^a-zA-Z0-9_-]/g, '') || `cust${Date.now().toString().slice(-4)}`
       const asciiOrig = origName.replace(/[^a-zA-Z0-9_-]/g, '') || `file${Date.now().toString().slice(-4)}`
       const storageFileName = `${dateStr}_${quote_no}_${asciiName}_${asciiOrig}.${ext}`
-      // 폴더 구조: 2026/05/15/Q-001/파일명
-      const storagePath = `${yyyy}/${mm}/${dd}/${quote_no}/${storageFileName}`
-      // Supabase Storage 업로드
-      console.log('[UPLOAD] 시도:', storagePath, 'size:', file.size)
-      const { data: upData, error: upErr } = await supabaseAdmin.storage
-        .from('quote-files')
-        .upload(storagePath, file, { upsert: false })
-      if (upErr) {
-        console.error('[UPLOAD] 실패:', JSON.stringify(upErr))
-      } else {
-        console.log('[UPLOAD] 성공:', upData)
-        file_path = storagePath
-      }
+      storage_path = `${yyyy}/${mm}/${dd}/${quote_no}/${storageFileName}`
+      file_path = storage_path
     }
 
     const { data, error } = await supabaseAdmin
@@ -123,10 +106,11 @@ export async function POST(req: NextRequest) {
           </table>
           ${note ? `<div style="background:#f9fafb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#374151;"><b>요청 사항:</b> ${note}</div>` : ''}
           <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
-            담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다.
-            해당 메일은 발신용으로 회신이 불가합니다. 
-            문의 사항은 atelierhuse21@gmail.com 으로 문의 바랍니다.
-            감사합니다.
+            담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다. <br/>
+            해당 메일은 발신용으로 회신이 불가합니다. <br/>
+            문의 사항은 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a> 으로 문의 바랍니다.<br/>
+            감사합니다.<br/>
+
           </div>
         </div>
       `,
@@ -157,7 +141,7 @@ export async function POST(req: NextRequest) {
             ${file_name ? `<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">업로드 파일</td><td style="padding:10px 0;">${file_name}</td></tr>` : ''}
             ${note ? `<tr><td style="padding:10px 0;color:#6b7280;">요청 사항</td><td style="padding:10px 0;">${note}</td></tr>` : ''}
           </table>
-          <a href="https://3d-print-quote-kappa.vercel.app/admin" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
+          <a href="${siteUrl}/admin" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
             👉 관리자 페이지에서 확인하기
           </a>
         </div>
@@ -169,7 +153,7 @@ export async function POST(req: NextRequest) {
       console.log('[EMAIL] 관리자 발송 성공:', adminEmailResult.data?.id)
     }
 
-    return NextResponse.json({ ok: true, quote_no })
+    return NextResponse.json({ ok: true, quote_no, storage_path })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
   }
