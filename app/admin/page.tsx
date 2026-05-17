@@ -21,6 +21,24 @@ const BADGE: Record<string, React.CSSProperties> = {
 }
 const BADGE_LABEL = { pending:'검토 중', approved:'승인됨', rejected:'거절됨' }
 
+// Supabase Storage 서명된 URL로 파일 다운로드
+async function downloadFile(filePath: string, fileName: string, password: string) {
+  try {
+    const res = await fetch(`/api/admin/download?path=${encodeURIComponent(filePath)}`, {
+      headers: { 'x-admin-password': password }
+    })
+    if (!res.ok) throw new Error('다운로드 실패')
+    const { url } = await res.json()
+    // 임시 링크로 자동 다운로드
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.click()
+  } catch (e: any) {
+    alert('다운로드 오류: ' + e.message)
+  }
+}
+
 export default function AdminPage() {
   const [password, setPassword] = useState('')
   const [authed, setAuthed]     = useState(false)
@@ -118,7 +136,20 @@ export default function AdminPage() {
           {sel.phone && <Info label="연락처" value={sel.phone} />}
         </Section>
         <Section title="업로드 파일">
-          <Info label="파일명" value={sel.file_name||'-'} />
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+            <div style={{ flex:1 }}>
+              <Info label="파일명" value={sel.file_name||'-'} />
+            </div>
+            {sel.file_path && (
+              <button
+                onClick={()=>downloadFile(sel.file_path!, sel.file_name||'download', password)}
+                style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:6,
+                  padding:'7px 14px', background:'#2563eb', color:'#fff', border:'none',
+                  borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                ⬇ 파일 다운로드
+              </button>
+            )}
+          </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginTop:8 }}>
             <Info label="X (가로)" value={(sel as any).size_x ? `${(sel as any).size_x} mm` : '-'} />
             <Info label="Y (세로)" value={(sel as any).size_y ? `${(sel as any).size_y} mm` : '-'} />
