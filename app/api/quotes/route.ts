@@ -68,9 +68,9 @@ export async function POST(req: NextRequest) {
         quote_no, name, email, company, phone, note,
         method, material, color, quality, qty, infill,
         vol_cm3: vol, file_name, file_path, auto_price,
-        size_x: parseFloat(formData.get('sizeX') as string) || null,
-        size_y: parseFloat(formData.get('sizeY') as string) || null,
-        size_z: parseFloat(formData.get('sizeZ') as string) || null,
+        size_x: parseFloat(body.sizeX) || null,
+        size_y: parseFloat(body.sizeY) || null,
+        size_z: parseFloat(body.sizeZ) || null,
         status: 'pending',
       })
       .select()
@@ -106,11 +106,10 @@ export async function POST(req: NextRequest) {
           </table>
           ${note ? `<div style="background:#f9fafb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#374151;"><b>요청 사항:</b> ${note}</div>` : ''}
           <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
-            담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다. <br/>
-            해당 메일은 발신용으로 회신이 불가합니다. <br/>
-            문의 사항은 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a> 으로 문의 바랍니다.<br/>
-            감사합니다.<br/>
-
+           담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다.<br/>
+해당 메일은 발신용으로 회신이 불가합니다.<br/>
+문의 사항은 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a> 으로 문의 바랍니다.<br/>
+감사합니다.
           </div>
         </div>
       `,
