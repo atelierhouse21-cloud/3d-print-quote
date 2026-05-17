@@ -104,7 +104,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
     const ctx = canvas.getContext('2d'); if (!ctx) return
     const W=canvas.width, H=canvas.height
     ctx.clearRect(0,0,W,H); ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,W,H)
-    const baseScale = Math.min(W,H)*1.5/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
+    const baseScale = Math.min(W,H)*0.80/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
     const scale=baseScale*zoom.current
     const cx=bbox.cx,cy=bbox.cy,cz=bbox.cz
     const cry=Math.cos(rotY.current),sry=Math.sin(rotY.current)
@@ -364,26 +364,49 @@ export default function Home() {
   const submit = async () => {
     setLoading(true)
     try {
-      // 첫 번째 파일 기준으로 API 전송 (다중 파일은 추후 확장)
       const primary = items[0]
-      const fd = new FormData()
-      fd.append('name',customer.name); fd.append('email',customer.email)
-      fd.append('company',customer.company); fd.append('phone',customer.phone)
-      fd.append('note',customer.note)
-      fd.append('method',primary.method); fd.append('material',primary.material)
-      fd.append('color',primary.color); fd.append('quality',primary.quality)
-      fd.append('qty',String(primary.qty)); fd.append('infill',String(primary.infill))
-      fd.append('qm',String(primary.qm)); fd.append('vol',String(primary.vol||0))
-      fd.append('sizeX',String(primary.sizeX||0)); fd.append('sizeY',String(primary.sizeY||0)); fd.append('sizeZ',String(primary.sizeZ||0))
+
+      // ── Step 1: 견적 데이터만 서버로 전송 (파일 제외) ──
       // 추가 파일 정보를 note에 포함
+      let finalNote = customer.note
       if (items.length > 1) {
         const extraInfo = items.slice(1).map((it,i)=>`[파일${i+2}: ${it.file.name}, ${it.method}, ${it.material}, ${it.qty}개]`).join(' ')
-        fd.append('note', customer.note + (customer.note?'\n':'') + '추가파일: ' + extraInfo)
+        finalNote = customer.note + (customer.note?'\n':'') + '추가파일: ' + extraInfo
       }
-      fd.append('file',primary.file)
-      const res = await fetch('/api/quotes',{method:'POST',body:fd})
+
+      const payload = {
+        name: customer.name, email: customer.email,
+        company: customer.company, phone: customer.phone,
+        note: finalNote,
+        method: primary.method, material: primary.material,
+        color: primary.color, quality: primary.quality,
+        qty: primary.qty, infill: primary.infill,
+        qm: primary.qm, vol: primary.vol || 0,
+        sizeX: primary.sizeX || 0, sizeY: primary.sizeY || 0, sizeZ: primary.sizeZ || 0,
+        fileName: primary.file.name,
+      }
+
+      const res = await fetch('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
       const json = await res.json()
       if (!json.ok) throw new Error(json.error)
+
+      // ── Step 2: 파일을 브라우저에서 직접 Supabase Storage에 업로드 ──
+      if (primary.file && json.storage_path) {
+        const { createClient } = await import('@supabase/supabase-js')
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
+        const { error: upErr } = await supabase.storage
+          .from('quote-files')
+          .upload(json.storage_path, primary.file, { upsert: false })
+        if (upErr) console.error('파일 업로드 실패:', upErr.message)
+      }
+
       setDone(json.quote_no)
     } catch(e:any) { alert('오류: '+e.message) }
     finally { setLoading(false) }
