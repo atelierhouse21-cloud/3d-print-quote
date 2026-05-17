@@ -43,7 +43,11 @@ export async function PATCH(
             ${admin_days ? `<div style="margin-top:10px;font-size:13px;color:#6b7280;">납기: <b>${admin_days}</b> (영업일 기준)</div>` : ''}
           </div>
           ${admin_note ? `<p style="font-size:14px;margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:8px;">${admin_note}</p>` : ''}
-          <p style="font-size:13px;color:#6b7280;">주문 진행을 원하시면 이 이메일에 회신하거나 담당자에게 연락 주세요.</p>
+          <p style="font-size:13px;color:#6b7280;">주문 진행을 원하시면
+          24시간 이내에 결제를 부탁 드립니다. 24시간이 초과될경우 해당 견적은 무효처리 됩니다.
+          해당 메일은 발신용으로 회신이 불가합니다. 
+            문의 사항은 atelierhuse21@gmail.com 으로 문의 바랍니다.
+            감사합니다.</p>
         </div>
       `,
     }).catch(() => {})
