@@ -124,6 +124,9 @@ export async function POST(req: NextRequest) {
           ${note ? `<div style="background:#f9fafb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#374151;"><b>요청 사항:</b> ${note}</div>` : ''}
           <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
             담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다.
+            해당 메일은 발신용으로 회신이 불가합니다. 
+            문의 사항은 atelierhuse21@gmail.com 으로 문의 바랍니다.
+            감사합니다.
           </div>
         </div>
       `,
@@ -154,7 +157,7 @@ export async function POST(req: NextRequest) {
             ${file_name ? `<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">업로드 파일</td><td style="padding:10px 0;">${file_name}</td></tr>` : ''}
             ${note ? `<tr><td style="padding:10px 0;color:#6b7280;">요청 사항</td><td style="padding:10px 0;">${note}</td></tr>` : ''}
           </table>
-          <a href="${siteUrl}/admin" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
+          <a href="https://3d-print-quote-kappa.vercel.app/admin" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
             👉 관리자 페이지에서 확인하기
           </a>
         </div>
