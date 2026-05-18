@@ -351,6 +351,11 @@ export default function Home() {
 
   const handleFile = (f:File|null) => {
     if (!f) return
+    const ext = f.name.split('.').pop()?.toLowerCase()
+    if (ext !== 'stl') {
+      alert('STL 파일만 업로드 가능합니다.')
+      return
+    }
     setItems(p=>[...p, newFileItem(f)])
   }
 
@@ -475,7 +480,7 @@ export default function Home() {
             <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>출력할 파일을 업로드하고 각 파일의 출력 설정을 선택해 주세요. 파일은 여러 개 추가 가능합니다.</p>
 
             {/* 파일 업로드 존 */}
-            <input ref={fileRef} type="file" accept="application/octet-stream,.stl,.obj,.3mf,.step,.stp,.iges" style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
+            <input ref={fileRef} type="file" accept=".stl" style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
             <div
               onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
               onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0])}}
@@ -484,7 +489,7 @@ export default function Home() {
               <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
                 <div style={{flex:1,minWidth:200}}>
                   <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>📂 파일을 이 영역에 드래그 하거나</div>
-                  <div style={{fontSize:12,color:'#6b7280'}}>STL · OBJ · 3MF · STEP · IGES 지원</div>
+                  <div style={{fontSize:12,color:'#6b7280'}}>STL 파일만 지원</div>
                 </div>
                 <button onClick={()=>fileRef.current?.click()}
                   style={{...S.btn,background:'#2563eb',color:'#fff',flexShrink:0,fontSize:13}}>
@@ -596,7 +601,7 @@ function Logo() {
   return (
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
       <div>
-        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>🖨️ 3D 프린팅 견적 시스템</div>
+        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>🪢아틀리에 하우스 3D 프린팅 견적 시스템</div>
         <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>FDM · SLA/DLP · SLS · MJF — 자동 견적 + 담당자 확인</div>
       </div>
     </div>
