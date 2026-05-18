@@ -81,9 +81,9 @@ export async function POST(req: NextRequest) {
     // ── 고객 접수 확인 이메일 ──────────────────────────
     const fromEmail = process.env.FROM_EMAIL!
     const adminEmail = process.env.ADMIN_EMAIL!
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://3d-print-quote-kappa.vercel.app'
 
-    console.log('[EMAIL] FROM:', fromEmail, '/ TO(고객):', email, '/ TO(관리자):', adminEmail)
+    console.log('[EMAIL] FROM:', fromEmail, '/ TO(고객):', email, '/ TO(관리자):', adminEmail, '/ SITE:', siteUrl)
 
     const customerEmailResult = await resend.emails.send({
       from: fromEmail,
@@ -106,10 +106,7 @@ export async function POST(req: NextRequest) {
           </table>
           ${note ? `<div style="background:#f9fafb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#374151;"><b>요청 사항:</b> ${note}</div>` : ''}
           <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
-           담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다.<br/>
-해당 메일은 발신용으로 회신이 불가합니다.<br/>
-문의 사항은 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a> 으로 문의 바랍니다.<br/>
-감사합니다.
+            담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다.
           </div>
         </div>
       `,
