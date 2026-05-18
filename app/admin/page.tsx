@@ -17,9 +17,23 @@ const S: Record<string, React.CSSProperties> = {
 const BADGE: Record<string, React.CSSProperties> = {
   pending:  { background:'#fffbeb', color:'#92400e', border:'1px solid #fcd34d' },
   approved: { background:'#f0fdf4', color:'#14532d', border:'1px solid #86efac' },
+  payment_confirmed: { background:'#eff6ff', color:'#1e40af', border:'1px solid #93c5fd' },
+  printing: { background:'#f5f3ff', color:'#5b21b6', border:'1px solid #c4b5fd' },
+  post_processing: { background:'#fdf4ff', color:'#86198f', border:'1px solid #f0abfc' },
+  shipping_ready: { background:'#f0fdfa', color:'#134e4a', border:'1px solid #5eead4' },
+  shipped: { background:'#f0fdf4', color:'#14532d', border:'1px solid #86efac' },
   rejected: { background:'#fef2f2', color:'#7f1d1d', border:'1px solid #fca5a5' },
 }
-const BADGE_LABEL = { pending:'검토 중', approved:'승인됨', rejected:'거절됨' }
+const BADGE_LABEL: Record<string, string> = { 
+  pending:'검토 중', 
+  approved:'승인됨', 
+  payment_confirmed:'결제 확인',
+  printing:'출력 중',
+  post_processing:'후처리 중',
+  shipping_ready:'배송 준비',
+  shipped:'배송 완료',
+  rejected:'거절됨' 
+}
 
 // Supabase Storage 서명된 URL로 파일 다운로드
 async function downloadFile(filePath: string, fileName: string, password: string) {
