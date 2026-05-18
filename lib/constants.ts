@@ -54,6 +54,9 @@ export type Quote = {
   file_name?: string
   file_path?: string
   vol_cm3?: number
+  size_x?: number
+  size_y?: number
+  size_z?: number
   method: string
   material: string
   color: string
@@ -65,6 +68,9 @@ export type Quote = {
   admin_price?: number
   admin_days?: string
   admin_note?: string
-  status: 'pending' | 'approved' | 'rejected'
+  final_price?: number
+  final_days?: string
+  tracking_number?: string
+  status: 'pending' | 'approved' | 'rejected' | 'payment_confirmed' | 'printing' | 'post_processing' | 'shipping_ready' | 'shipped'
   created_at: string
 }
