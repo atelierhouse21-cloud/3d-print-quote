@@ -151,6 +151,71 @@ export default function AdminPage() {
         <span style={{ fontSize:13, color:'#9ca3af' }}>{new Date(sel.created_at).toLocaleString('ko-KR')}</span>
       </div>
 
+      <Section title="견적 정보" style={{ marginBottom:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <Info label="견적 번호" value={sel.quote_no} />
+          <div style={{ marginBottom:12 }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>진행 상태</label>
+            <select
+              value={sel.status}
+              onChange={async (e) => {
+                if (!confirm(`상태를 "${STATUS_LABELS[e.target.value]}"(으)로 변경하시겠습니까?`)) return
+                try {
+                  const res = await fetch(`/api/quotes/${sel.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+                    body: JSON.stringify({ action: 'change_status', status: e.target.value })
+                  })
+                  const json = await res.json()
+                  if (!json.ok) throw new Error(json.error)
+                  alert('상태가 변경되고 고객에게 이메일이 발송되었습니다.')
+                  refresh()
+                } catch(e:any) { alert('오류: '+e.message) }
+              }}
+              style={{ padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, width:'100%' }}>
+              {Object.entries(STATUS_LABELS).map(([k,v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {sel.status === 'shipping_ready' && (
+          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>송장번호</label>
+            <div style={{ display:'flex', gap:8 }}>
+              <input
+                type="text"
+                placeholder="송장번호 입력"
+                defaultValue={(sel as any).tracking_number || ''}
+                id={`tracking-${sel.id}`}
+                style={{ flex:1, padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }}
+              />
+              <button
+                onClick={async () => {
+                  const input = document.getElementById(`tracking-${sel.id}`) as HTMLInputElement
+                  const trackingNo = input?.value.trim()
+                  if (!trackingNo) { alert('송장번호를 입력하세요'); return }
+                  if (!confirm('송장번호를 등록하고 배송 완료 상태로 변경하시겠습니까?')) return
+                  try {
+                    const res = await fetch(`/api/quotes/${sel.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+                      body: JSON.stringify({ action: 'ship', tracking_number: trackingNo })
+                    })
+                    const json = await res.json()
+                    if (!json.ok) throw new Error(json.error)
+                    alert('배송 완료 처리되고 고객에게 이메일이 발송되었습니다.')
+                    refresh()
+                  } catch(e:any) { alert('오류: '+e.message) }
+                }}
+                style={{ padding:'8px 16px', background:'#10b981', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                배송 완료
+              </button>
+            </div>
+          </div>
+        )}
+      </Section>
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
         <Section title="고객 정보">
           <Info label="이름" value={`${sel.name} (${sel.company||'개인'})`} />
