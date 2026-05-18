@@ -39,6 +39,28 @@ async function downloadFile(filePath: string, fileName: string, password: string
   }
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: '검토중',
+  approved: '견적 확정',
+  payment_confirmed: '결제 확인',
+  printing: '출력 중',
+  post_processing: '후처리 중',
+  shipping_ready: '배송 준비',
+  shipped: '배송 완료',
+  rejected: '거절',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: '#f59e0b',
+  approved: '#10b981',
+  payment_confirmed: '#3b82f6',
+  printing: '#8b5cf6',
+  post_processing: '#ec4899',
+  shipping_ready: '#14b8a6',
+  shipped: '#22c55e',
+  rejected: '#ef4444',
+}
+
 export default function AdminPage() {
   const [password, setPassword] = useState('')
   const [authed, setAuthed]     = useState(false)
