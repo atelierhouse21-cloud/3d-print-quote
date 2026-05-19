@@ -53,6 +53,62 @@ async function downloadFile(filePath: string, fileName: string, password: string
   }
 }
 
+
+// 마일스톤 UI 컴포넌트
+function Milestone({ status }: { status: string }) {
+  const steps = [
+    { key: 'pending', label: '검토중' },
+    { key: 'approved', label: '견적확정' },
+    { key: 'payment_confirmed', label: '결제확인' },
+    { key: 'printing', label: '출력중' },
+    { key: 'post_processing', label: '후처리' },
+    { key: 'shipping_ready', label: '배송준비' },
+    { key: 'shipped', label: '배송완료' },
+  ]
+  
+  const currentIdx = steps.findIndex(s => s.key === status)
+  
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'16px 0', borderBottom:'1px solid #e5e7eb' }}>
+      {steps.map((step, idx) => {
+        const isPast = idx < currentIdx
+        const isCurrent = idx === currentIdx
+        const isFuture = idx > currentIdx
+        
+        return (
+          <div key={step.key} style={{ display:'flex', alignItems:'center', flex:1 }}>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1 }}>
+              <div style={{
+                width:32, height:32, borderRadius:'50%',
+                background: isCurrent ? '#2563eb' : isPast ? '#10b981' : '#e5e7eb',
+                color: isCurrent || isPast ? '#fff' : '#9ca3af',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:12, fontWeight:700,
+                marginBottom:6
+              }}>
+                {isPast ? '✓' : idx+1}
+              </div>
+              <div style={{
+                fontSize:11, fontWeight:600,
+                color: isCurrent ? '#2563eb' : isPast ? '#10b981' : '#9ca3af'
+              }}>
+                {step.label}
+              </div>
+            </div>
+            {idx < steps.length - 1 && (
+              <div style={{
+                flex:0.5, height:2,
+                background: isPast ? '#10b981' : '#e5e7eb',
+                marginBottom:28
+              }} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 const STATUS_LABELS: Record<string, string> = {
   pending: '검토중',
   approved: '견적 확정',
@@ -165,6 +221,8 @@ export default function AdminPage() {
         <span style={{ fontSize:13, color:'#9ca3af' }}>{new Date(sel.created_at).toLocaleString('ko-KR')}</span>
       </div>
 
+      {sel.status !== 'rejected' && <Milestone status={sel.status} />}
+      
       <Section title="견적 정보" style={{ marginBottom:12 }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <Info label="견적 번호" value={sel.quote_no} />
