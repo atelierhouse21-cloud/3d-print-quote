@@ -5,65 +5,239 @@ import { krw } from '@/lib/constants'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-// PATCH: 견적 상태 업데이트 (승인 / 거절)
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const pw = req.headers.get('x-admin-password')
-  if (pw !== process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const body = await req.json()
-  const { status, admin_price, admin_days, admin_note } = body
-  const supabaseAdmin = getSupabaseAdmin()
-
-  // DB 업데이트
-  const { data: quote, error } = await supabaseAdmin
-    .from('quotes')
-    .update({ status, admin_price, admin_days, admin_note })
-    .eq('id', params.id)
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // 고객에게 결과 이메일 발송
-  if (status === 'approved') {
-    await resend.emails.send({
-      from: process.env.FROM_EMAIL!,
-      to: quote.email,
-      subject: `[${quote.quote_no}] 3D 프린팅 견적이 확정되었습니다 ✅`,
+// 이메일 템플릿 함수들
+function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: string) {
+  const templates: Record<string, any> = {
+    payment_confirmed: {
+      subject: `[${quote.quote_no}] 결제가 확인되었습니다`,
       html: `
-        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;">
-          <h2 style="font-size:20px;margin-bottom:8px;">견적 확정 안내</h2>
-          <p style="color:#6b7280;margin-bottom:24px;">안녕하세요 <b>${quote.name}</b>님, 담당자 검토가 완료되어 최종 견적을 안내드립니다.</p>
-          <div style="background:#f0fdf4;border-radius:12px;padding:20px;margin-bottom:20px;">
-            <div style="font-size:13px;color:#6b7280;margin-bottom:4px;">확정 금액 (VAT 별도)</div>
-            <div style="font-size:28px;font-weight:800;color:#15803d;">${krw(admin_price ?? quote.auto_price)}</div>
-            ${admin_days ? `<div style="margin-top:10px;font-size:13px;color:#6b7280;">납기: <b>${admin_days}</b> (영업일 기준)</div>` : ''}
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">💳 결제 확인 완료</h2>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:20px;">결제가 정상적으로 확인되었습니다. 곧 작업을 시작하겠습니다.</p>
+          <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px 16px;font-size:13px;color:#14532d;">
+            <b>견적 번호:</b> ${quote.quote_no}<br/>
+            <b>확정 금액:</b> ${krw(quote.final_price || quote.auto_price)} (VAT 별도)
           </div>
-          ${admin_note ? `<p style="font-size:14px;margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:8px;">${admin_note}</p>` : ''}
-          <p style="font-size:13px;color:#6b7280;">주문 진행을 원하시면 이 이메일에 회신하거나 담당자에게 연락 주세요.</p>
         </div>
-      `,
-    }).catch(() => {})
-  } else if (status === 'rejected') {
-    await resend.emails.send({
-      from: process.env.FROM_EMAIL!,
-      to: quote.email,
-      subject: `[${quote.quote_no}] 견적 요청 결과 안내`,
+      `
+    },
+    printing: {
+      subject: `[${quote.quote_no}] 3D 출력 작업이 시작되었습니다`,
       html: `
-        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;">
-          <h2 style="font-size:20px;margin-bottom:8px;">견적 요청 결과 안내</h2>
-          <p style="color:#6b7280;margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님, 아쉽게도 현재 요청하신 조건으로는 출력이 어렵습니다.</p>
-          ${admin_note ? `<p style="font-size:14px;padding:14px;background:#fef2f2;border-radius:8px;margin-bottom:16px;">${admin_note}</p>` : ''}
-          <p style="font-size:13px;color:#6b7280;">궁금하신 사항은 담당자에게 문의해 주세요.</p>
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">🖨️ 출력 작업 진행 중</h2>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:20px;">3D 프린팅 출력 작업이 진행 중입니다.</p>
+          <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:12px 16px;font-size:13px;color:#1e40af;">
+            <b>견적 번호:</b> ${quote.quote_no}<br/>
+            <b>출력 방식:</b> ${quote.method}<br/>
+            <b>예상 완료:</b> ${quote.final_days || '영업일 기준'}
+          </div>
         </div>
-      `,
-    }).catch(() => {})
+      `
+    },
+    post_processing: {
+      subject: `[${quote.quote_no}] 출력 완료 - 후처리 진행 중`,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">✨ 후처리 작업 중</h2>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:20px;">3D 출력이 완료되었습니다. 현재 표면 처리 및 마감 작업을 진행하고 있습니다.</p>
+          <div style="background:#fef3f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;font-size:13px;color:#991b1b;">
+            <b>견적 번호:</b> ${quote.quote_no}<br/>
+            <b>진행 상태:</b> 후처리 중
+          </div>
+        </div>
+      `
+    },
+    shipping_ready: {
+      subject: `[${quote.quote_no}] 작업 완료 - 배송 준비 중`,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">📦 배송 준비 중</h2>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:20px;">모든 작업이 완료되었습니다. 현재 배송 준비 중이며, 발송 후 송장번호를 안내드리겠습니다.</p>
+          <div style="background:#f0fdfa;border:1px solid #5eead4;border-radius:8px;padding:12px 16px;font-size:13px;color:#134e4a;">
+            <b>견적 번호:</b> ${quote.quote_no}<br/>
+            <b>진행 상태:</b> 배송 준비 완료
+          </div>
+        </div>
+      `
+    },
+    shipped: {
+      subject: `[${quote.quote_no}] 배송이 시작되었습니다`,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">🚚 배송 시작</h2>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:20px;">제품이 발송되었습니다. 아래 송장번호로 배송 조회가 가능합니다.</p>
+          <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;padding:16px;font-size:14px;color:#14532d;text-align:center;">
+            <div style="margin-bottom:8px;font-weight:700;">송장번호</div>
+            <div style="font-size:20px;font-weight:800;color:#15803d;">${trackingNumber || '-'}</div>
+          </div>
+          <p style="margin-top:16px;font-size:13px;color:#6b7280;">택배사 홈페이지에서 배송 현황을 확인하실 수 있습니다.</p>
+        </div>
+      `
+    }
   }
+  return templates[status]
+}
 
-  return NextResponse.json({ ok: true })
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const pw = req.headers.get('x-admin-password')
+    if (pw !== process.env.ADMIN_PASSWORD) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const supabaseAdmin = getSupabaseAdmin()
+    const body = await req.json()
+    const { action } = body
+
+    // 견적 조회
+    const { data: quote, error: fetchErr } = await supabaseAdmin
+      .from('quotes')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+    if (fetchErr || !quote) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    console.log('[API] Action:', action, '/ Quote:', quote.quote_no)
+
+    // ── 상태 변경 ──
+    if (action === 'change_status') {
+      const { status } = body
+      const { error: updateErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ status })
+        .eq('id', params.id)
+      if (updateErr) throw updateErr
+
+      console.log('[API] Status changed to:', status)
+
+      // 이메일 발송 (approved, rejected, pending 제외)
+      if (!['approved', 'rejected', 'pending'].includes(status)) {
+        const template = getStatusEmailTemplate(status, quote)
+        if (template) {
+          console.log('[EMAIL] Sending to:', quote.email, '/ Subject:', template.subject)
+          const emailResult = await resend.emails.send({
+            from: process.env.FROM_EMAIL!,
+            to: quote.email,
+            subject: template.subject,
+            html: template.html,
+          })
+          if (emailResult.error) {
+            console.error('[EMAIL] 발송 실패:', JSON.stringify(emailResult.error))
+          } else {
+            console.log('[EMAIL] 발송 성공:', emailResult.data?.id)
+          }
+        }
+      }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── 배송 완료 처리 ──
+    if (action === 'ship') {
+      const { tracking_number } = body
+      const { error: updateErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ status: 'shipped', tracking_number })
+        .eq('id', params.id)
+      if (updateErr) throw updateErr
+
+      console.log('[API] Shipped with tracking:', tracking_number)
+
+      const template = getStatusEmailTemplate('shipped', quote, tracking_number)
+      const emailResult = await resend.emails.send({
+        from: process.env.FROM_EMAIL!,
+        to: quote.email,
+        subject: template.subject,
+        html: template.html,
+      })
+      if (emailResult.error) {
+        console.error('[EMAIL] 발송 실패:', JSON.stringify(emailResult.error))
+      } else {
+        console.log('[EMAIL] 발송 성공:', emailResult.data?.id)
+      }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── 기존 승인/거절 ──
+    if (action === 'approve') {
+      const { final_price, final_days } = body
+      const { error: updateErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ status: 'approved', final_price, final_days })
+        .eq('id', params.id)
+      if (updateErr) throw updateErr
+
+      console.log('[API] Approved / Price:', final_price, '/ Days:', final_days)
+
+      const emailResult = await resend.emails.send({
+        from: process.env.FROM_EMAIL!,
+        to: quote.email,
+        subject: `[${quote.quote_no}] 견적이 확정되었습니다`,
+        html: `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+            <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">✅ 견적 확정 안내</h2>
+            <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+            <p style="margin-bottom:20px;">요청하신 견적이 확정되었습니다.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;">${quote.quote_no}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">확정 금액</td><td style="padding:10px 0;font-weight:700;font-size:18px;color:#15803d;">${krw(final_price)} (VAT 별도)</td></tr>
+              <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;font-weight:600;">${final_days}</td></tr>
+            </table>
+            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
+              입금 확인 후 작업을 시작합니다.
+            </div>
+          </div>
+        `,
+      })
+      if (emailResult.error) {
+        console.error('[EMAIL] 발송 실패:', JSON.stringify(emailResult.error))
+      } else {
+        console.log('[EMAIL] 발송 성공:', emailResult.data?.id)
+      }
+
+      return NextResponse.json({ ok: true })
+    } else if (action === 'reject') {
+      const { error: updateErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ status: 'rejected' })
+        .eq('id', params.id)
+      if (updateErr) throw updateErr
+
+      console.log('[API] Rejected')
+
+      const emailResult = await resend.emails.send({
+        from: process.env.FROM_EMAIL!,
+        to: quote.email,
+        subject: `[${quote.quote_no}] 견적 요청 결과 안내`,
+        html: `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+            <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">견적 요청 결과</h2>
+            <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+            <p style="margin-bottom:20px;">요청하신 견적 건(${quote.quote_no})은 현재 진행이 어려운 상황입니다.</p>
+            <p style="color:#6b7280;font-size:13px;">문의사항이 있으시면 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a>으로 연락 주시기 바랍니다.</p>
+          </div>
+        `,
+      })
+      if (emailResult.error) {
+        console.error('[EMAIL] 발송 실패:', JSON.stringify(emailResult.error))
+      } else {
+        console.log('[EMAIL] 발송 성공:', emailResult.data?.id)
+      }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  } catch (e: any) {
+    console.error('[API] Error:', e.message)
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
 }
