@@ -129,6 +129,9 @@ export default function AdminPage() {
   const [loading, setLoading]   = useState(false)
   const [aForm, setAForm]       = useState({ price:'', days:'', note:'' })
   const [filter, setFilter]     = useState<'all'|'pending'|'approved'|'rejected'>('all')
+  const [tab, setTab]           = useState<'quotes'|'settings'>('quotes')
+  const [settings, setSettings] = useState<any>(null)
+  const [editSettings, setEditSettings] = useState<any>(null)
 
   const fetchQuotes = async (pw: string) => {
     const res = await fetch('/api/quotes', { headers: { 'x-admin-password': pw } })
@@ -148,6 +151,30 @@ export default function AdminPage() {
   const refresh = async () => {
     const data = await fetchQuotes(password)
     setQuotes(data)
+  }
+  
+  const loadSettings = async () => {
+    try {
+      const res = await fetch('/api/settings')
+      const data = await res.json()
+      setSettings(data)
+      setEditSettings(JSON.parse(JSON.stringify(data)))
+    } catch(e) { console.error(e) }
+  }
+  
+  const saveSettings = async () => {
+    if (!confirm('설정을 저장하시겠습니까?')) return
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ key: 'print_options', value: editSettings })
+      })
+      const json = await res.json()
+      if (!json.ok && json.error) throw new Error(json.error)
+      alert('설정이 저장되었습니다.')
+      loadSettings()
+    } catch(e:any) { alert('오류: '+e.message) }
   }
 
   const decide = async (status: 'approved'|'rejected') => {
@@ -446,9 +473,36 @@ export default function AdminPage() {
   // 목록 화면
   return (
     <div style={S.wrap}>
+      <div style={{ marginBottom:20 }}>
+        <h1 style={{ fontSize:20, fontWeight:700, marginBottom:16 }}>🗂 견적 관리 대시보드</h1>
+        
+        <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'2px solid #e5e7eb' }}>
+          <button
+            onClick={()=>setTab('quotes')}
+            style={{
+              padding:'10px 20px', background:'none', border:'none',
+              borderBottom: tab==='quotes'?'3px solid #2563eb':'3px solid transparent',
+              color: tab==='quotes'?'#2563eb':'#6b7280',
+              fontSize:14, fontWeight:700, cursor:'pointer'
+            }}>
+            📋 견적 목록
+          </button>
+          <button
+            onClick={()=>{setTab('settings'); if(!settings) loadSettings()}}
+            style={{
+              padding:'10px 20px', background:'none', border:'none',
+              borderBottom: tab==='settings'?'3px solid #2563eb':'3px solid transparent',
+              color: tab==='settings'?'#2563eb':'#6b7280',
+              fontSize:14, fontWeight:700, cursor:'pointer'
+            }}>
+            ⚙️ 견적 옵션 설정
+          </button>
+        </div>
+      </div>
+      
+      {tab === 'quotes' && (
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
         <div>
-          <h1 style={{ fontSize:20, fontWeight:700, marginBottom:2 }}>🗂 견적 관리 대시보드</h1>
           <div style={{ fontSize:13, color:'#6b7280' }}>
             전체 {quotes.length}건 &nbsp;·&nbsp;
             <span style={{ color:'#d97706', fontWeight:600 }}>검토 중 {counts.pending}건</span> &nbsp;·&nbsp;
@@ -503,6 +557,68 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+      )}
+      
+      {tab === 'settings' && editSettings && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <h2 style={{ fontSize:18, fontWeight:700 }}>견적 옵션 설정</h2>
+            <button onClick={saveSettings} style={{
+              padding:'10px 20px', background:'#2563eb', color:'#fff',
+              border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer'
+            }}>
+              💾 저장
+            </button>
+          </div>
+          
+          <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(0,0,0,0.1)', marginBottom:16 }}>
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>출력 방식</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+              {['FDM', 'SLA', 'MJF', 'SLS'].map(method => (
+                <label key={method} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.methods?.includes(method)}
+                    onChange={e=>{
+                      const methods = e.target.checked
+                        ? [...(editSettings.methods||[]), method]
+                        : (editSettings.methods||[]).filter((m:string)=>m!==method)
+                      setEditSettings({...editSettings, methods})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14, fontWeight:600 }}>{method}</span>
+                </label>
+              ))}
+            </div>
+            
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16, paddingTop:16, borderTop:'1px solid #e5e7eb' }}>품질</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+              {['Draft (0.3mm)', 'Standard (0.2mm)', 'Fine (0.1mm)'].map(quality => (
+                <label key={quality} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.qualities?.includes(quality)}
+                    onChange={e=>{
+                      const qualities = e.target.checked
+                        ? [...(editSettings.qualities||[]), quality]
+                        : (editSettings.qualities||[]).filter((q:string)=>q!==quality)
+                      setEditSettings({...editSettings, qualities})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14 }}>{quality}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          
+          <div style={{ background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:8, padding:16, fontSize:13, color:'#92400e' }}>
+            ℹ️ <b>소재와 색상은 출력 방식별로 자동 관리됩니다.</b><br/>
+            체크한 옵션만 견적 요청 페이지에 표시됩니다. 최소 1개 이상 선택해야 합니다.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
