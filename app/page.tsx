@@ -1,610 +1,609 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
-import { METHODS, MATS, COLS, QUAL, calcPrice, calcDays, krw } from '@/lib/constants'
+import { useState, useEffect } from 'react'
+import { METHODS, krw, calcDays } from '@/lib/constants'
+import type { Quote } from '@/lib/constants'
 
-// ── STL 파서 ──────────────────────────────────────────
-function isBinarySTL(buffer: ArrayBuffer) {
-  const view = new DataView(buffer)
-  const n = view.getUint32(80, true)
-  return buffer.byteLength === 84 + n * 50
-}
-function parseBinarySTL(buffer: ArrayBuffer): Float32Array {
-  const view = new DataView(buffer)
-  const n = view.getUint32(80, true)
-  const v = new Float32Array(n * 9)
-  let o = 84
-  for (let i = 0; i < n; i++) {
-    o += 12
-    for (let j = 0; j < 9; j++) { v[i*9+j] = view.getFloat32(o, true); o += 4 }
-    o += 2
-  }
-  return v
-}
-function parseASCIISTL(text: string): Float32Array {
-  const v: number[] = []
-  const re = /vertex\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) v.push(parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3]))
-  return new Float32Array(v)
-}
-function parseSTL(buffer: ArrayBuffer): Float32Array {
-  const h = new TextDecoder().decode(buffer.slice(0, 5))
-  if (h === 'solid' && !isBinarySTL(buffer)) return parseASCIISTL(new TextDecoder().decode(buffer))
-  return parseBinarySTL(buffer)
-}
-function calcVolume(v: Float32Array): number {
-  let vol = 0
-  for (let i = 0; i < v.length; i += 9)
-    vol += (v[i]*(v[i+4]*v[i+8]-v[i+7]*v[i+5]) - v[i+1]*(v[i+3]*v[i+8]-v[i+6]*v[i+5]) + v[i+2]*(v[i+3]*v[i+7]-v[i+6]*v[i+4])) / 6
-  return parseFloat((Math.abs(vol)/1000).toFixed(2))
-}
-function calcBBox(v: Float32Array) {
-  let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity
-  for (let i = 0; i < v.length; i+=3) {
-    if(v[i]<x0)x0=v[i]; if(v[i]>x1)x1=v[i]
-    if(v[i+1]<y0)y0=v[i+1]; if(v[i+1]>y1)y1=v[i+1]
-    if(v[i+2]<z0)z0=v[i+2]; if(v[i+2]>z1)z1=v[i+2]
-  }
-  return { x:parseFloat((x1-x0).toFixed(1)), y:parseFloat((y1-y0).toFixed(1)), z:parseFloat((z1-z0).toFixed(1)), cx:(x0+x1)/2, cy:(y0+y1)/2, cz:(z0+z1)/2 }
+const S: Record<string, React.CSSProperties> = {
+  wrap: { maxWidth:900, margin:'0 auto', padding:'24px 16px 60px' },
+  card: { background:'#fff', borderRadius:16, border:'1px solid #e5e7eb' },
+  body: { padding:24 },
+  btn:  { padding:'9px 20px', borderRadius:9, fontSize:14, fontWeight:600, cursor:'pointer', border:'none', display:'inline-flex', alignItems:'center', gap:6 },
+  sBtn: { padding:'8px 16px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', background:'#fff', color:'#374151', border:'1.5px solid #d1d5db' },
+  inp:  { width:'100%', padding:'10px 12px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:14, fontFamily:'inherit', outline:'none' },
+  lbl:  { fontSize:12, fontWeight:700, color:'#374151', textTransform:'uppercase', letterSpacing:'.4px', display:'block', marginBottom:6 } as React.CSSProperties,
+  grp:  { display:'flex', flexDirection:'column', gap:6 },
 }
 
-// ── STL 뷰어 (소형) ──────────────────────────────────
-type STLInfo = { x:number; y:number; z:number; volume:number }
-function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const viewerRef = useRef<HTMLDivElement>(null)
-  const [info, setInfo] = useState<STLInfo|null>(null)
-  const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState(false)
-  const [tick, setTick] = useState(0)
-  const dragging = useRef(false)
-  const lastX = useRef(0); const lastY = useRef(0)
-  const lastPinchDist = useRef(0); const touching = useRef(false)
-  const vertsRef = useRef<Float32Array|null>(null)
-  const bboxRef = useRef<ReturnType<typeof calcBBox>|null>(null)
-  const rotY = useRef(0.4); const rotX = useRef(-0.3); const zoom = useRef(1.0)
+const BADGE: Record<string, React.CSSProperties> = {
+  pending:  { background:'#fffbeb', color:'#92400e', border:'1px solid #fcd34d' },
+  approved: { background:'#f0fdf4', color:'#14532d', border:'1px solid #86efac' },
+  payment_confirmed: { background:'#eff6ff', color:'#1e40af', border:'1px solid #93c5fd' },
+  printing: { background:'#f5f3ff', color:'#5b21b6', border:'1px solid #c4b5fd' },
+  post_processing: { background:'#fdf4ff', color:'#86198f', border:'1px solid #f0abfc' },
+  shipping_ready: { background:'#f0fdfa', color:'#134e4a', border:'1px solid #5eead4' },
+  shipped: { background:'#f0fdf4', color:'#14532d', border:'1px solid #86efac' },
+  issue_reported: { background:'#fef2f2', color:'#991b1b', border:'1px solid #fca5a5' },
+  rejected: { background:'#fef2f2', color:'#7f1d1d', border:'1px solid #fca5a5' },
+}
 
-  useEffect(() => {
-    if (!file) return
-    setLoading(true); setErr(false)
-    file.arrayBuffer().then(buf => {
-      try {
-        const v = parseSTL(buf)
-        const bbox = calcBBox(v)
-        const volume = calcVolume(v)
-        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume }
-        setInfo(si); onAnalyzed(si)
-        vertsRef.current = v; bboxRef.current = bbox
-        rotY.current=0.4; rotX.current=-0.3; zoom.current=1.0
-        setLoading(false)
-      } catch { setErr(true); setLoading(false) }
-    }).catch(() => { setErr(true); setLoading(false) })
-  }, [file])
+const BADGE_LABEL: Record<string, string> = { 
+  pending:'검토 중', 
+  approved:'승인됨', 
+  payment_confirmed:'결제 확인',
+  printing:'출력 중',
+  post_processing:'후처리 중',
+  shipping_ready:'배송 준비',
+  shipped:'발송 완료',
+  issue_reported:'문제 상황',
+  rejected:'거절됨' 
+}
 
-  useEffect(() => { if (!loading) draw() }, [loading, tick])
+const STATUS_LABELS: Record<string, string> = {
+  pending: '검토중',
+  approved: '견적 확정',
+  payment_confirmed: '결제 확인',
+  printing: '출력 중',
+  post_processing: '후처리 중',
+  shipping_ready: '배송 준비',
+  shipped: '발송 완료',
+  issue_reported: '문제 상황 접수',
+  rejected: '거절',
+}
 
-  useEffect(() => {
-    const el = viewerRef.current
-    if (!el) return
-    const wheelH = (e: WheelEvent) => {
-      e.preventDefault()
-      zoom.current *= e.deltaY > 0 ? 0.9 : 1.1
-      zoom.current = Math.max(0.2, Math.min(5.0, zoom.current))
-      setTick(t=>t+1)
-    }
-    const touchH = (e: TouchEvent) => { if (e.touches.length > 1) e.preventDefault() }
-    el.addEventListener('wheel', wheelH, { passive:false })
-    el.addEventListener('touchmove', touchH, { passive:false })
-    return () => { el.removeEventListener('wheel', wheelH); el.removeEventListener('touchmove', touchH) }
-  }, [])
-
-  function draw() {
-    const canvas = canvasRef.current; const verts = vertsRef.current; const bbox = bboxRef.current
-    if (!canvas||!verts||!bbox) return
-    const ctx = canvas.getContext('2d'); if (!ctx) return
-    const W=canvas.width, H=canvas.height
-    ctx.clearRect(0,0,W,H); ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,W,H)
-    const baseScale = Math.min(W,H)*0.80/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
-    const scale=baseScale*zoom.current
-    const cx=bbox.cx,cy=bbox.cy,cz=bbox.cz
-    const cry=Math.cos(rotY.current),sry=Math.sin(rotY.current)
-    const crx=Math.cos(rotX.current),srx=Math.sin(rotX.current)
-    const transform=(x:number,y:number,z:number)=>{
-      const x1=cry*x+sry*z, z1=-sry*x+cry*z
-      const y2=crx*y-srx*z1, z2=srx*y+crx*z1
-      return {px:x1+W/2,py:-y2+H/2,pz:z2}
-    }
-    type Tri={depth:number;pts:{px:number;py:number}[];wnx:number;wny:number;wnz:number}
-    const tris:Tri[]=[]
-    for(let i=0;i<verts.length;i+=9){
-      const ax2=verts[i+3]-verts[i],ay2=verts[i+4]-verts[i+1],az2=verts[i+5]-verts[i+2]
-      const bx2=verts[i+6]-verts[i],by2=verts[i+7]-verts[i+1],bz2=verts[i+8]-verts[i+2]
-      const wnx=ay2*bz2-az2*by2,wny=az2*bx2-ax2*bz2,wnz=ax2*by2-ay2*bx2
-      const nl=Math.sqrt(wnx*wnx+wny*wny+wnz*wnz)||1
-      const p0=transform((verts[i]-cx)*scale,(verts[i+1]-cy)*scale,(verts[i+2]-cz)*scale)
-      const p1=transform((verts[i+3]-cx)*scale,(verts[i+4]-cy)*scale,(verts[i+5]-cz)*scale)
-      const p2=transform((verts[i+6]-cx)*scale,(verts[i+7]-cy)*scale,(verts[i+8]-cz)*scale)
-      const e1x=p1.px-p0.px,e1y=p1.py-p0.py,e2x=p2.px-p0.px,e2y=p2.py-p0.py
-      if(e1x*e2y-e1y*e2x>=0) continue
-      tris.push({depth:(p0.pz+p1.pz+p2.pz)/3,pts:[p0,p1,p2],wnx:wnx/nl,wny:wny/nl,wnz:wnz/nl})
-    }
-    tris.sort((a,b)=>a.depth-b.depth)
-    const L1={x:0.6,y:0.9,z:0.5},l1l=Math.sqrt(0.6**2+0.9**2+0.5**2)
-    const L2={x:-0.4,y:0.5,z:-0.3},l2l=Math.sqrt(0.4**2+0.5**2+0.3**2)
-    for(const t of tris){
-      const d1=Math.max(0,t.wnx*L1.x/l1l+t.wny*L1.y/l1l+t.wnz*L1.z/l1l)
-      const d2=Math.max(0,t.wnx*L2.x/l2l+t.wny*L2.y/l2l+t.wnz*L2.z/l2l)
-      const bright=Math.min(1,0.30+d1*0.55+d2*0.18)
-      const v=Math.round(105+bright*(238-105))
-      const [q0,q1,q2]=t.pts
-      const tcx=(q0.px+q1.px+q2.px)/3,tcy=(q0.py+q1.py+q2.py)/3
-      const ep=t.pts.map(p=>({px:tcx+(p.px-tcx)*1.008+(p.px-tcx>0?0.5:-0.5),py:tcy+(p.py-tcy)*1.008+(p.py-tcy>0?0.5:-0.5)}))
-      ctx.beginPath(); ctx.moveTo(ep[0].px,ep[0].py); ctx.lineTo(ep[1].px,ep[1].py); ctx.lineTo(ep[2].px,ep[2].py)
-      ctx.closePath(); ctx.fillStyle=`rgb(${v},${v},${v})`; ctx.fill()
-    }
+// Supabase Storage 파일 다운로드
+async function downloadFile(filePath: string, fileName: string, password: string) {
+  try {
+    const res = await fetch(`/api/admin/download?path=${encodeURIComponent(filePath)}`, {
+      headers: { 'x-admin-password': password }
+    })
+    if (!res.ok) throw new Error('다운로드 실패')
+    const { url } = await res.json()
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.click()
+  } catch (e: any) {
+    alert('다운로드 오류: ' + e.message)
   }
+}
 
-  const onMD=(e:React.MouseEvent)=>{dragging.current=true;lastX.current=e.clientX;lastY.current=e.clientY}
-  const onMM=(e:React.MouseEvent)=>{
-    if(!dragging.current)return
-    rotY.current+=(e.clientX-lastX.current)*0.008; rotX.current+=(e.clientY-lastY.current)*0.008
-    rotX.current=Math.max(-Math.PI/2,Math.min(Math.PI/2,rotX.current))
-    lastX.current=e.clientX; lastY.current=e.clientY; setTick(t=>t+1)
-  }
-  const onMU=()=>{dragging.current=false}
-  const onTS=(e:React.TouchEvent)=>{
-    if(e.touches.length===1){touching.current=true;lastX.current=e.touches[0].clientX;lastY.current=e.touches[0].clientY}
-    else if(e.touches.length===2){const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;lastPinchDist.current=Math.sqrt(dx*dx+dy*dy)}
-  }
-  const onTM=(e:React.TouchEvent)=>{
-    if(e.touches.length===1&&touching.current){
-      rotY.current+=(e.touches[0].clientX-lastX.current)*0.01; rotX.current+=(e.touches[0].clientY-lastY.current)*0.01
-      rotX.current=Math.max(-Math.PI/2,Math.min(Math.PI/2,rotX.current))
-      lastX.current=e.touches[0].clientX; lastY.current=e.touches[0].clientY; setTick(t=>t+1)
-    } else if(e.touches.length===2){
-      const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY
-      const dist=Math.sqrt(dx*dx+dy*dy)
-      if(lastPinchDist.current>0){zoom.current*=dist/lastPinchDist.current;zoom.current=Math.max(0.2,Math.min(5,zoom.current));setTick(t=>t+1)}
-      lastPinchDist.current=dist
-    }
-  }
-  const onTE=()=>{touching.current=false;lastPinchDist.current=0}
-
+// 마일스톤 UI
+function Milestone({ status }: { status: string }) {
+  const steps = [
+    { key: 'pending', label: '검토중' },
+    { key: 'approved', label: '견적확정' },
+    { key: 'payment_confirmed', label: '결제확인' },
+    { key: 'printing', label: '출력중' },
+    { key: 'post_processing', label: '후처리' },
+    { key: 'shipping_ready', label: '배송준비' },
+    { key: 'shipped', label: '발송완료' },
+  ]
+  
+  const currentIdx = steps.findIndex(s => s.key === status)
+  
   return (
-    <div style={{borderRadius:10,overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-      <div ref={viewerRef} style={{position:'relative',background:'#f5f5f5',height,cursor:dragging.current?'grabbing':'grab',touchAction:'none'}}
-        onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU} onMouseLeave={onMU}
-        onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
-        {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#6b7280'}}>
-          <div style={{fontSize:24}}>⏳</div><div style={{fontSize:12}}>분석 중...</div>
-        </div>}
-        {err&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,color:'#9ca3af'}}>
-          <div style={{fontSize:24}}>📄</div><div style={{fontSize:12}}>미리보기 불가</div>
-        </div>}
-        <canvas ref={canvasRef} width={500} height={height} style={{width:'100%',height:'100%',display:loading||err?'none':'block'}}/>
-        {!loading&&!err&&<div style={{position:'absolute',bottom:6,right:8,fontSize:10,color:'#9ca3af',background:'rgba(255,255,255,0.85)',padding:'2px 7px',borderRadius:5,pointerEvents:'none'}}>
-          드래그·회전 | 휠·핀치·확대
-        </div>}
-      </div>
-      {info&&(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',borderTop:'1px solid #e5e7eb',background:'#fff'}}>
-          {[['X',info.x+'mm'],['Y',info.y+'mm'],['Z',info.z+'mm'],['부피',info.volume+'㎤']].map(([l,v],i)=>(
-            <div key={l} style={{padding:'7px 8px',textAlign:'center',borderRight:i<3?'1px solid #e5e7eb':'none'}}>
-              <div style={{fontSize:9,color:'#9ca3af',fontWeight:700,textTransform:'uppercase' as const,marginBottom:2}}>{l}</div>
-              <div style={{fontSize:12,fontWeight:700}}>{v}</div>
+    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'16px 0', borderBottom:'1px solid #e5e7eb' }}>
+      {steps.map((step, idx) => {
+        const isPast = idx < currentIdx
+        const isCurrent = idx === currentIdx
+        
+        return (
+          <div key={step.key} style={{ display:'flex', alignItems:'center', flex:1 }}>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1 }}>
+              <div style={{
+                width:32, height:32, borderRadius:'50%',
+                background: isCurrent ? '#2563eb' : isPast ? '#10b981' : '#e5e7eb',
+                color: isCurrent || isPast ? '#fff' : '#9ca3af',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:12, fontWeight:700,
+                marginBottom:6
+              }}>
+                {isPast ? '✓' : idx+1}
+              </div>
+              <div style={{
+                fontSize:11, fontWeight:600,
+                color: isCurrent ? '#2563eb' : isPast ? '#10b981' : '#9ca3af'
+              }}>
+                {step.label}
+              </div>
             </div>
-          ))}
+            {idx < steps.length - 1 && (
+              <div style={{
+                flex:0.5, height:2,
+                background: isPast ? '#10b981' : '#e5e7eb',
+                marginBottom:28
+              }} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function AdminPage() {
+  const [password, setPassword] = useState('')
+  const [authed, setAuthed]     = useState(false)
+  const [quotes, setQuotes]     = useState<Quote[]>([])
+  const [sel, setSel]           = useState<Quote | null>(null)
+  const [loading, setLoading]   = useState(false)
+  const [aForm, setAForm]       = useState({ price:'', days:'', note:'' })
+  const [filter, setFilter]     = useState<'all'|'pending'|'approved'|'rejected'>('all')
+  const [tab, setTab]           = useState<'quotes'|'settings'>('quotes')
+  const [settings, setSettings] = useState<any>(null)
+  const [editSettings, setEditSettings] = useState<any>(null)
+
+  const fetchQuotes = async (pw: string) => {
+    const res = await fetch('/api/quotes', { headers: { 'x-admin-password': pw } })
+    if (!res.ok) throw new Error('인증 실패')
+    return res.json() as Promise<Quote[]>
+  }
+
+  const login = async () => {
+    setLoading(true)
+    try {
+      const data = await fetchQuotes(password)
+      setQuotes(data); setAuthed(true)
+    } catch { alert('비밀번호가 올바르지 않습니다.') }
+    finally { setLoading(false) }
+  }
+
+  const refresh = async () => {
+    const data = await fetchQuotes(password)
+    setQuotes(data)
+  }
+  
+  const loadSettings = async () => {
+    try {
+      const res = await fetch('/api/settings')
+      const data = await res.json()
+      setSettings(data)
+      setEditSettings(JSON.parse(JSON.stringify(data)))
+    } catch(e) { console.error(e) }
+  }
+  
+  const saveSettings = async () => {
+    if (!confirm('설정을 저장하시겠습니까?')) return
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ key: 'print_options', value: editSettings })
+      })
+      const json = await res.json()
+      if (!json.ok && json.error) throw new Error(json.error)
+      alert('설정이 저장되었습니다.')
+      loadSettings()
+    } catch(e:any) { alert('오류: '+e.message) }
+  }
+
+  const decide = async (status: 'approved'|'rejected') => {
+    if (!sel) return
+    setLoading(true)
+    try {
+      await fetch(`/api/quotes/${sel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({
+          action: status === 'approved' ? 'approve' : 'reject',
+          final_price: aForm.price ? parseInt(aForm.price.replace(/\D/g,'')) : null,
+          final_days: aForm.days || calcDays(sel.method, sel.qty),
+          admin_note: aForm.note,
+        }),
+      })
+      await refresh()
+      setSel(null)
+    } catch (e: any) { alert('오류: ' + e.message) }
+    finally { setLoading(false) }
+  }
+
+  const filtered = quotes.filter(q => filter === 'all' || q.status === filter)
+  const counts = {
+    pending:  quotes.filter(q=>q.status==='pending').length,
+    approved: quotes.filter(q=>q.status==='approved').length,
+    rejected: quotes.filter(q=>q.status==='rejected').length,
+  }
+
+  // 로그인 화면
+  if (!authed) return (
+    <div style={{ maxWidth:400, margin:'80px auto', padding:24 }}>
+      <div style={{ textAlign:'center', marginBottom:32 }}>
+        <div style={{ fontSize:36, marginBottom:8 }}>🔐</div>
+        <h2 style={{ fontSize:20, fontWeight:700 }}>관리자 로그인</h2>
+        <p style={{ color:'#6b7280', marginTop:4 }}>3D 프린팅 견적 관리 시스템</p>
+      </div>
+      <div style={S.card}>
+        <div style={S.body}>
+          <div style={S.grp}>
+            <label style={S.lbl}>관리자 비밀번호</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&login()} style={S.inp} placeholder="비밀번호 입력" autoFocus />
+          </div>
+          <button style={{ ...S.btn, background:'#2563eb', color:'#fff', width:'100%', justifyContent:'center', marginTop:16 }}
+            onClick={login} disabled={loading}>
+            {loading ? '확인 중...' : '로그인'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // 상세 화면
+  if (sel) return (
+    <div style={S.wrap}>
+      <button style={{ ...S.sBtn, marginBottom:20 }} onClick={()=>setSel(null)}>← 목록으로</button>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+        <span style={{ fontSize:18, fontWeight:700 }}>{sel.quote_no}</span>
+        <span style={{ padding:'3px 12px', borderRadius:20, fontSize:12, fontWeight:600, ...BADGE[sel.status] }}>
+          {BADGE_LABEL[sel.status]}
+        </span>
+        <span style={{ fontSize:13, color:'#9ca3af' }}>{new Date(sel.created_at).toLocaleString('ko-KR')}</span>
+      </div>
+
+      {sel.status !== 'rejected' && <Milestone status={sel.status} />}
+      
+      <Section title="견적 정보" style={{ marginBottom:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <Info label="견적 번호" value={sel.quote_no} />
+          <div style={{ marginBottom:12 }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>진행 상태</label>
+            <select
+              value={sel.status}
+              onChange={async (e) => {
+                if (!confirm(`상태를 "${STATUS_LABELS[e.target.value]}"(으)로 변경하시겠습니까?`)) return
+                try {
+                  const res = await fetch(`/api/quotes/${sel.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+                    body: JSON.stringify({ action: 'change_status', status: e.target.value })
+                  })
+                  const json = await res.json()
+                  if (!json.ok) throw new Error(json.error)
+                  alert('상태가 변경되고 고객에게 이메일이 발송되었습니다.')
+                  refresh()
+                } catch(e:any) { alert('오류: '+e.message) }
+              }}
+              style={{ padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, width:'100%' }}>
+              {Object.entries(STATUS_LABELS).map(([k,v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {sel.status === 'shipping_ready' && (
+          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>송장번호</label>
+            <div style={{ display:'flex', gap:8 }}>
+              <input
+                type="text"
+                placeholder="송장번호 입력"
+                defaultValue={(sel as any).tracking_number || ''}
+                id={`tracking-${sel.id}`}
+                style={{ flex:1, padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }}
+              />
+              <button
+                onClick={async () => {
+                  const input = document.getElementById(`tracking-${sel.id}`) as HTMLInputElement
+                  const trackingNo = input?.value.trim()
+                  if (!trackingNo) { alert('송장번호를 입력하세요'); return }
+                  if (!confirm('송장번호를 등록하고 발송 완료 상태로 변경하시겠습니까?')) return
+                  try {
+                    const res = await fetch(`/api/quotes/${sel.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+                      body: JSON.stringify({ action: 'ship', tracking_number: trackingNo })
+                    })
+                    const json = await res.json()
+                    if (!json.ok) throw new Error(json.error)
+                    alert('발송 완료 처리되고 고객에게 이메일이 발송되었습니다.')
+                    refresh()
+                  } catch(e:any) { alert('오류: '+e.message) }
+                }}
+                style={{ padding:'8px 16px', background:'#10b981', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                발송 완료
+              </button>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+        <Section title="고객 정보">
+          <Info label="이름" value={`${sel.name} (${sel.company||'개인'})`} />
+          <Info label="이메일" value={sel.email} />
+          {sel.phone && <Info label="연락처" value={sel.phone} />}
+        </Section>
+        <Section title="업로드 파일">
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+            <div style={{ flex:1 }}>
+              <Info label="파일명" value={sel.file_name||'-'} />
+            </div>
+            {sel.file_path && (
+              <button
+                onClick={()=>downloadFile(sel.file_path!, sel.file_name||'download', password)}
+                style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:6,
+                  padding:'7px 14px', background:'#2563eb', color:'#fff', border:'none',
+                  borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                ⬇ 파일 다운로드
+              </button>
+            )}
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginTop:8 }}>
+            <Info label="X (가로)" value={(sel as any).size_x ? `${(sel as any).size_x} mm` : '-'} />
+            <Info label="Y (세로)" value={(sel as any).size_y ? `${(sel as any).size_y} mm` : '-'} />
+            <Info label="Z (높이)" value={(sel as any).size_z ? `${(sel as any).size_z} mm` : '-'} />
+            <Info label="부피" value={sel.vol_cm3 ? `${sel.vol_cm3} cm³` : '-'} />
+          </div>
+        </Section>
+      </div>
+
+      <Section title="출력 사양" style={{ marginBottom:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+          <Info label="방식" value={METHODS[sel.method]?.label||sel.method} />
+          <Info label="소재" value={sel.material} />
+          <Info label="색상" value={sel.color} />
+          <Info label="품질" value={sel.quality} />
+          <Info label="수량" value={`${sel.qty}개`} />
+          <Info label="자동 견적가" value={krw(sel.auto_price)||'-'} bold />
+          {sel.infill && <Info label="충전율" value={`${sel.infill}%`} />}
+        </div>
+        {sel.note && (
+          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+            <Info label="고객 요청 사항" value={sel.note} />
+          </div>
+        )}
+      </Section>
+
+      {sel.status === 'pending' ? (
+        <Section title="관리자 결정">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+            <div style={S.grp}>
+              <label style={S.lbl}>확정 금액 (원) — 비워두면 자동 견적가 사용</label>
+              <input type="text" value={aForm.price} onChange={e=>setAForm(p=>({...p,price:e.target.value}))}
+                placeholder={krw(sel.auto_price)||''} style={S.inp} />
+            </div>
+            <div style={S.grp}>
+              <label style={S.lbl}>확정 납기</label>
+              <input type="text" value={aForm.days} onChange={e=>setAForm(p=>({...p,days:e.target.value}))}
+                placeholder={calcDays(sel.method, sel.qty)} style={S.inp} />
+            </div>
+            <div style={{ ...S.grp, gridColumn:'1/-1' }}>
+              <label style={S.lbl}>관리자 메모 (고객에게 이메일로 전달됩니다)</label>
+              <textarea value={aForm.note} onChange={e=>setAForm(p=>({...p,note:e.target.value}))}
+                placeholder="출력 가능 여부, 특이사항, 고객 안내 내용..."
+                style={{ ...S.inp, minHeight:80, resize:'vertical' }} />
+            </div>
+          </div>
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+            <button style={{ ...S.btn, background:'#fff', color:'#dc2626', border:'1.5px solid #fca5a5' }}
+              onClick={()=>decide('rejected')} disabled={loading}>✕ 거절</button>
+            <button style={{ ...S.btn, background:'#16a34a', color:'#fff' }}
+              onClick={()=>decide('approved')} disabled={loading}>
+              {loading?'처리 중...':'✓ 승인 및 이메일 발송'}
+            </button>
+          </div>
+        </Section>
+      ) : (
+        <Section title="처리 결과">
+          {(sel as any).final_price && <Info label="확정 금액" value={krw((sel as any).final_price)} bold />}
+          {(sel as any).final_days  && <Info label="확정 납기" value={(sel as any).final_days} />}
+          {(sel as any).admin_note  && <Info label="관리자 메모" value={(sel as any).admin_note} />}
+          
+          {sel.status === 'shipped' && (
+            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12 }}>
+                <Info label="배송사" value={(sel as any).shipping_company || '-'} />
+                <Info label="송장번호" value={(sel as any).tracking_number || '-'} bold />
+              </div>
+            </div>
+          )}
+          
+          {sel.status === 'issue_reported' && (
+            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+              <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>문제 상황 내용</label>
+              <textarea
+                defaultValue={(sel as any).issue_note || ''}
+                id={`issue-note-${sel.id}`}
+                placeholder="발생한 문제 상황을 상세히 입력하세요..."
+                style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, minHeight:100, resize:'vertical', fontFamily:'inherit' }}
+              />
+              <button
+                onClick={async () => {
+                  const textarea = document.getElementById(`issue-note-${sel.id}`) as HTMLTextAreaElement
+                  const issueNote = textarea.value.trim()
+                  if (!issueNote) { alert('문제 상황 내용을 입력하세요'); return }
+                  if (!confirm('문제 상황을 저장하시겠습니까?')) return
+                  try {
+                    const res = await fetch(`/api/quotes/${sel.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+                      body: JSON.stringify({ action: 'update_issue', issue_note: issueNote })
+                    })
+                    const json = await res.json()
+                    if (!json.ok) throw new Error(json.error)
+                    alert('문제 상황이 저장되었습니다.')
+                    refresh()
+                  } catch(e:any) { alert('오류: '+e.message) }
+                }}
+                style={{ marginTop:8, padding:'8px 16px', background:'#dc2626', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                💾 문제 상황 저장
+              </button>
+            </div>
+          )}
+        </Section>
+      )}
+    </div>
+  )
+
+  // 목록 화면
+  return (
+    <div style={S.wrap}>
+      <div style={{ marginBottom:20 }}>
+        <h1 style={{ fontSize:20, fontWeight:700, marginBottom:16 }}>🗂 견적 관리 대시보드</h1>
+        
+        <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'2px solid #e5e7eb' }}>
+          <button
+            onClick={()=>setTab('quotes')}
+            style={{
+              padding:'10px 20px', background:'none', border:'none',
+              borderBottom: tab==='quotes'?'3px solid #2563eb':'3px solid transparent',
+              color: tab==='quotes'?'#2563eb':'#6b7280',
+              fontSize:14, fontWeight:700, cursor:'pointer'
+            }}>
+            📋 견적 목록
+          </button>
+          <button
+            onClick={()=>{setTab('settings'); if(!settings) loadSettings()}}
+            style={{
+              padding:'10px 20px', background:'none', border:'none',
+              borderBottom: tab==='settings'?'3px solid #2563eb':'3px solid transparent',
+              color: tab==='settings'?'#2563eb':'#6b7280',
+              fontSize:14, fontWeight:700, cursor:'pointer'
+            }}>
+            ⚙️ 견적 옵션 설정
+          </button>
+        </div>
+      </div>
+      
+      {tab === 'quotes' && (
+      <>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <div>
+          <div style={{ fontSize:13, color:'#6b7280' }}>
+            전체 {quotes.length}건 &nbsp;·&nbsp;
+            <span style={{ color:'#d97706', fontWeight:600 }}>검토 중 {counts.pending}건</span> &nbsp;·&nbsp;
+            <span style={{ color:'#16a34a', fontWeight:600 }}>승인 {counts.approved}건</span> &nbsp;·&nbsp;
+            거절 {counts.rejected}건
+          </div>
+        </div>
+        <button style={S.sBtn} onClick={refresh}>↻ 새로고침</button>
+      </div>
+
+      <div style={{ display:'flex', gap:4, marginBottom:16, background:'#f3f4f6', padding:3, borderRadius:10, width:'fit-content' }}>
+        {(['all','pending','approved','rejected'] as const).map(f => (
+          <button key={f} onClick={()=>setFilter(f)} style={{
+            padding:'6px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
+            background: filter===f ? '#fff' : 'transparent',
+            color: filter===f ? '#1a1a1a' : '#6b7280',
+            boxShadow: filter===f ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+          }}>
+            {f==='all'?'전체':BADGE_LABEL[f]} {f!=='all'&&`(${counts[f]})`}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {filtered.length === 0 && (
+          <div style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>견적 요청이 없습니다</div>
+        )}
+        {filtered.map(q => (
+          <button key={q.id} onClick={()=>{setSel(q);setAForm({price:'',days:'',note:''})}} style={{
+            display:'flex', alignItems:'center', gap:12, padding:'14px 16px',
+            background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, cursor:'pointer',
+            textAlign:'left', width:'100%', transition:'border-color .15s',
+          }}
+          onMouseEnter={e=>(e.currentTarget.style.borderColor='#93c5fd')}
+          onMouseLeave={e=>(e.currentTarget.style.borderColor='#e5e7eb')}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                <span style={{ fontWeight:700, fontSize:14 }}>{q.quote_no}</span>
+                <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
+                  {BADGE_LABEL[q.status]}
+                </span>
+                <span style={{ fontSize:11, color:'#9ca3af' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
+              </div>
+              <div style={{ fontSize:13, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {q.file_name} &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} &nbsp;·&nbsp; {q.qty}개
+              </div>
+            </div>
+            <div style={{ textAlign:'right', flexShrink:0 }}>
+              <div style={{ fontSize:15, fontWeight:700 }}>{krw((q as any).final_price||q.auto_price)}</div>
+            </div>
+            <span style={{ color:'#9ca3af', fontSize:18 }}>›</span>
+          </button>
+        ))}
+      </div>
+      </>
+      )}
+      
+      {tab === 'settings' && editSettings && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <h2 style={{ fontSize:18, fontWeight:700 }}>견적 옵션 설정</h2>
+            <button onClick={saveSettings} style={{
+              padding:'10px 20px', background:'#2563eb', color:'#fff',
+              border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer'
+            }}>
+              💾 저장
+            </button>
+          </div>
+          
+          <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(0,0,0,0.1)', marginBottom:16 }}>
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>출력 방식</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+              {['FDM', 'SLA', 'MJF', 'SLS'].map(method => (
+                <label key={method} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.methods?.includes(method)}
+                    onChange={e=>{
+                      const methods = e.target.checked
+                        ? [...(editSettings.methods||[]), method]
+                        : (editSettings.methods||[]).filter((m:string)=>m!==method)
+                      setEditSettings({...editSettings, methods})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14, fontWeight:600 }}>{method}</span>
+                </label>
+              ))}
+            </div>
+            
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16, paddingTop:16, borderTop:'1px solid #e5e7eb' }}>품질</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+              {['Draft (0.3mm)', 'Standard (0.2mm)', 'Fine (0.1mm)'].map(quality => (
+                <label key={quality} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.qualities?.includes(quality)}
+                    onChange={e=>{
+                      const qualities = e.target.checked
+                        ? [...(editSettings.qualities||[]), quality]
+                        : (editSettings.qualities||[]).filter((q:string)=>q!==quality)
+                      setEditSettings({...editSettings, qualities})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14 }}>{quality}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          
+          <div style={{ background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:8, padding:16, fontSize:13, color:'#92400e' }}>
+            ℹ️ <b>소재와 색상은 출력 방식별로 자동 관리됩니다.</b><br/>
+            체크한 옵션만 견적 요청 페이지에 표시됩니다. 최소 1개 이상 선택해야 합니다.
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-// ── 타입 정의 ─────────────────────────────────────────
-type FileItem = {
-  id: string
-  file: File
-  vol: number | null
-  sizeX: number | null; sizeY: number | null; sizeZ: number | null
-  method: string; material: string; color: string; quality: string; qm: number
-  qty: number; infill: number
-}
-type CustomerForm = { name:string; email:string; company:string; phone:string; note:string }
-
-const newFileItem = (file: File): FileItem => ({
-  id: Math.random().toString(36).slice(2),
-  file, vol:null, sizeX:null, sizeY:null, sizeZ:null,
-  method:'FDM', material:'PLA', color:'White', quality:'Standard (0.2mm)', qm:1.0, qty:1, infill:20,
-})
-
-const S: Record<string,React.CSSProperties> = {
-  wrap: {maxWidth:820,margin:'0 auto',padding:'20px 16px 60px'},
-  card: {background:'#fff',borderRadius:16,border:'1px solid #e5e7eb',overflow:'hidden'},
-  body: {padding:'24px 24px'},
-  grp:  {display:'flex',flexDirection:'column',gap:5},
-  lbl:  {fontSize:11,fontWeight:700,color:'#374151',textTransform:'uppercase',letterSpacing:'.4px'} as React.CSSProperties,
-  inp:  {padding:'9px 11px',border:'1.5px solid #d1d5db',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'},
-  btn:  {padding:'10px 22px',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer',border:'none',display:'inline-flex',alignItems:'center',gap:6},
-  sBtn: {background:'#fff',color:'#374151',border:'1.5px solid #d1d5db',padding:'9px 20px',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer'},
-}
-
-// ── 파일 아이템 카드 ──────────────────────────────────
-function FileItemCard({ item, idx, onChange, onRemove }: {
-  item: FileItem; idx: number
-  onChange: (id:string, key:keyof FileItem, val:any)=>void
-  onRemove: (id:string)=>void
-}) {
-  const updMethod = (m:string) => {
-    onChange(item.id,'method',m); onChange(item.id,'material',MATS[m][0])
-    onChange(item.id,'color',COLS[m][0]); onChange(item.id,'quality',QUAL[m][0].v); onChange(item.id,'qm',QUAL[m][0].m)
-  }
-  const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
-  const price = item.vol ? calcPrice(item.method,item.vol,item.qm,item.qty,item.infill) : 0
-
+function Section({ title, children, style }: { title: string; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
-      {/* 카드 헤더 */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 16px',background:'#f9fafb',borderBottom:'1px solid #e5e7eb'}}>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>{idx+1}</span>
-          <span style={{fontWeight:600,fontSize:13,maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.file.name}</span>
-        </div>
-        <button onClick={()=>onRemove(item.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:18,lineHeight:1,padding:'0 4px'}}>✕</button>
-      </div>
-
-      {/* 본문: 미리보기(좌) + 설정(우) */}
-      <div style={{display:'grid',gridTemplateColumns:isSTL?'1fr 1fr':'1fr',gap:0}}>
-        {/* 좌: STL 미리보기 */}
-        {isSTL && (
-          <div style={{padding:14,borderRight:'1px solid #e5e7eb'}}>
-            <STLViewer height={220} file={item.file} onAnalyzed={info=>{
-              onChange(item.id,'vol',info.volume)
-              onChange(item.id,'sizeX',info.x); onChange(item.id,'sizeY',info.y); onChange(item.id,'sizeZ',info.z)
-            }}/>
-          </div>
-        )}
-
-        {/* 우: 출력 설정 */}
-        <div style={{padding:14}}>
-          {/* 출력 방식 */}
-          <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:'#374151',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:6}}>출력 방식</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}>
-              {Object.entries(METHODS).map(([k,m])=>(
-                <button key={k} onClick={()=>updMethod(k)} style={{
-                  border:item.method===k?'2px solid #2563eb':'1px solid #e5e7eb',
-                  borderRadius:7,padding:'6px 8px',cursor:'pointer',textAlign:'left',
-                  background:item.method===k?'#eff6ff':'#fafafa',transition:'all .12s'}}>
-                  <div style={{fontSize:12,fontWeight:700,color:item.method===k?'#2563eb':'#1a1a1a'}}>{m.label}</div>
-                  <div style={{fontSize:10,color:item.method===k?'#3b82f6':'#9ca3af',marginTop:1}}>{m.sub}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 소재 / 색상 / 품질 */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
-            <div style={S.grp}>
-              <label style={S.lbl}>소재</label>
-              <select value={item.material} onChange={e=>onChange(item.id,'material',e.target.value)} style={{...S.inp,fontSize:12}}>
-                {MATS[item.method].map(v=><option key={v}>{v}</option>)}
-              </select>
-            </div>
-            <div style={S.grp}>
-              <label style={S.lbl}>색상</label>
-              <select value={item.color} onChange={e=>onChange(item.id,'color',e.target.value)} style={{...S.inp,fontSize:12}}>
-                {COLS[item.method].map(v=><option key={v}>{v}</option>)}
-              </select>
-            </div>
-            <div style={S.grp}>
-              <label style={S.lbl}>품질</label>
-              <select value={item.quality} onChange={e=>{
-                const q=QUAL[item.method].find(x=>x.v===e.target.value)
-                onChange(item.id,'quality',e.target.value); onChange(item.id,'qm',q?.m||1.0)
-              }} style={{...S.inp,fontSize:12}}>
-                {QUAL[item.method].map(q=><option key={q.v}>{q.v}</option>)}
-              </select>
-            </div>
-            <div style={S.grp}>
-              <label style={S.lbl}>수량</label>
-              <input type="number" min={1} max={9999} value={item.qty}
-                onChange={e=>onChange(item.id,'qty',Math.max(1,parseInt(e.target.value)||1))}
-                style={{...S.inp,fontSize:12}}/>
-            </div>
-          </div>
-
-          {/* FDM 충전율 */}
-          {item.method==='FDM'&&(
-            <div style={{marginBottom:10}}>
-              <label style={{...S.lbl,display:'block',marginBottom:5}}>
-                충전율: <span style={{color:'#2563eb',fontWeight:700}}>{item.infill}%</span>
-                <span style={{fontWeight:400,color:'#9ca3af',marginLeft:6,fontSize:10}}>{item.infill<=20?'경량':item.infill<=50?'일반':item.infill<=80?'강도':'솔리드'}</span>
-              </label>
-              <input type="range" min={10} max={100} step={5} value={item.infill}
-                onChange={e=>onChange(item.id,'infill',parseInt(e.target.value))}
-                style={{width:'100%',accentColor:'#2563eb'}}/>
-            </div>
-          )}
-
-          {/* 예상 금액 */}
-          <div style={{background:'#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:11,color:'#6b7280'}}>예상 금액 (VAT 별도)</span>
-            <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(price):'담당자 산출'}</span>
-          </div>
-        </div>
-      </div>
+    <div style={{ background:'#f9fafb', borderRadius:12, padding:18, marginBottom:12, ...style }}>
+      <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:12 }}>{title}</div>
+      {children}
     </div>
   )
 }
 
-// ── 메인 컴포넌트 ─────────────────────────────────────
-export default function Home() {
-  const [step, setStep] = useState(1)
-  const [options, setOptions] = useState<any>(null)
-  const [done, setDone] = useState<string|null>(null)
-  const [loading, setLoading] = useState(false)
-  const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',note:''})
-  const [items, setItems] = useState<FileItem[]>([])
-  const [drag, setDrag] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  const updC = (k:keyof CustomerForm, v:string) => setCustomer(p=>({...p,[k]:v}))
-
-  const handleFile = (f:File|null) => {
-    if (!f) return
-    const ext = f.name.split('.').pop()?.toLowerCase()
-    if (ext !== 'stl') {
-      alert('STL 파일만 업로드 가능합니다.')
-      return
-    }
-    setItems(p=>[...p, newFileItem(f)])
-  }
-
-  const updateItem = (id:string, key:keyof FileItem, val:any) => {
-    setItems(p=>p.map(it=>it.id===id?{...it,[key]:val}:it))
-  }
-  const removeItem = (id:string) => setItems(p=>p.filter(it=>it.id!==id))
-
-  const totalPrice = items.reduce((sum,it)=>sum+(it.vol?calcPrice(it.method,it.vol,it.qm,it.qty,it.infill):0),0)
-
-  const submit = async () => {
-    setLoading(true)
-    try {
-      const primary = items[0]
-
-      // ── Step 1: 견적 데이터만 서버로 전송 (파일 제외) ──
-      // 추가 파일 정보를 note에 포함
-      let finalNote = customer.note
-      if (items.length > 1) {
-        const extraInfo = items.slice(1).map((it,i)=>`[파일${i+2}: ${it.file.name}, ${it.method}, ${it.material}, ${it.qty}개]`).join(' ')
-        finalNote = customer.note + (customer.note?'\n':'') + '추가파일: ' + extraInfo
-      }
-
-      const payload = {
-        name: customer.name, email: customer.email,
-        company: customer.company, phone: customer.phone,
-        note: finalNote,
-        method: primary.method, material: primary.material,
-        color: primary.color, quality: primary.quality,
-        qty: primary.qty, infill: primary.infill,
-        qm: primary.qm, vol: primary.vol || 0,
-        sizeX: primary.sizeX || 0, sizeY: primary.sizeY || 0, sizeZ: primary.sizeZ || 0,
-        fileName: primary.file.name,
-      }
-
-      const res = await fetch('/api/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await res.json()
-      if (!json.ok) throw new Error(json.error)
-
-      // ── Step 2: 파일을 브라우저에서 직접 Supabase Storage에 업로드 ──
-      if (primary.file && json.storage_path) {
-        const { createClient } = await import('@supabase/supabase-js')
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        )
-        const { error: upErr } = await supabase.storage
-          .from('quote-files')
-          .upload(json.storage_path, primary.file, { upsert: false })
-        if (upErr) console.error('파일 업로드 실패:', upErr.message)
-      }
-
-      setDone(json.quote_no)
-    } catch(e:any) { alert('오류: '+e.message) }
-    finally { setLoading(false) }
-  }
-
-  const STEP_LABELS = ['고객 정보','파일 업로드 & 출력 설정','견적 확인']
-
-  if (done) return (
-    <div style={S.wrap}><Logo/>
-      <div style={S.card}><div style={{...S.body,textAlign:'center',padding:'52px 28px'}}>
-        <div style={{fontSize:64,marginBottom:20}}>🎉</div>
-        <h2 style={{fontSize:22,fontWeight:700,marginBottom:10}}>견적 요청이 접수되었습니다!</h2>
-        <p style={{color:'#6b7280',lineHeight:1.8,marginBottom:28}}>
-          <b>{customer.email}</b>으로 접수 확인 메일을 발송했습니다.<br/>
-          담당자 검토 후 <b>1~2 영업일 이내</b> 최종 견적을 안내드립니다.<br/>
-          <span style={{fontSize:13,color:'#9ca3af'}}>견적 번호: {done}</span>
-        </p>
-        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:'',note:''});setItems([])}}>새 견적 요청</button>
-      </div></div>
-    </div>
-  )
-
+function Info({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
-    <div style={S.wrap}><Logo/>
-      <div style={S.card}>
-        {/* 진행 단계 */}
-        <div style={{display:'flex',alignItems:'center',padding:'16px 24px',background:'#f9fafb',borderBottom:'1px solid #e5e7eb'}}>
-          {STEP_LABELS.map((s,i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',flex:i<STEP_LABELS.length-1?1:undefined}}>
-              <div style={{display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
-                <div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,
-                  background:step>i+1?'#16a34a':step===i+1?'#2563eb':'#fff',
-                  border:`2px solid ${step>i+1?'#16a34a':step===i+1?'#2563eb':'#d1d5db'}`,
-                  color:step>i+1||step===i+1?'#fff':'#9ca3af'}}>
-                  {step>i+1?'✓':i+1}
-                </div>
-                <span style={{fontSize:12,whiteSpace:'nowrap',color:step===i+1?'#1a1a1a':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
-              </div>
-              {i<STEP_LABELS.length-1&&<div style={{flex:1,height:1,background:'#d1d5db',margin:'0 8px'}}/>}
-            </div>
-          ))}
-        </div>
-
-        <div style={S.body}>
-
-          {/* ── STEP 1: 고객 정보 ── */}
-          {step===1&&<>
-            <p style={{color:'#6b7280',marginBottom:20,fontSize:13}}>견적 요청자 정보를 입력해 주세요.</p>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:20}}>
-              <div style={S.grp}><label style={S.lbl}>이름 *</label><input type="text" value={customer.name} onChange={e=>updC('name',e.target.value)} placeholder="홍길동" style={S.inp}/></div>
-              <div style={S.grp}><label style={S.lbl}>이메일 *</label><input type="email" value={customer.email} onChange={e=>updC('email',e.target.value)} placeholder="example@mail.com" style={S.inp}/></div>
-              <div style={S.grp}><label style={S.lbl}>회사 / 기관</label><input type="text" value={customer.company} onChange={e=>updC('company',e.target.value)} placeholder="(주)회사명 또는 개인" style={S.inp}/></div>
-              <div style={S.grp}><label style={S.lbl}>연락처</label><input type="tel" value={customer.phone} onChange={e=>updC('phone',e.target.value)} placeholder="010-0000-0000" style={S.inp}/></div>
-
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end'}}>
-              <button style={{...S.btn,background:'#2563eb',color:'#fff'}}
-                onClick={()=>{if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}setStep(2)}}>
-                다음 단계 →
-              </button>
-            </div>
-          </>}
-
-          {/* ── STEP 2: 파일 업로드 & 출력 설정 ── */}
-          {step===2&&<>
-            <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>출력할 파일을 업로드하고 각 파일의 출력 설정을 선택해 주세요. 파일은 여러 개 추가 가능합니다.</p>
-
-            {/* 파일 업로드 존 */}
-            <input ref={fileRef} type="file" accept=".stl" style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
-            <div
-              onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
-              onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0])}}
-              style={{border:`2px dashed ${drag?'#2563eb':'#d1d5db'}`,borderRadius:12,padding:'20px',
-                background:drag?'#eff6ff':'#f9fafb',transition:'all .15s',marginBottom:10}}>
-              <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
-                <div style={{flex:1,minWidth:200}}>
-                  <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>📂 파일을 이 영역에 드래그 하거나</div>
-                  <div style={{fontSize:12,color:'#6b7280'}}>STL 파일만 지원</div>
-                </div>
-                <button onClick={()=>fileRef.current?.click()}
-                  style={{...S.btn,background:'#2563eb',color:'#fff',flexShrink:0,fontSize:13}}>
-                  + 파일 선택
-                </button>
-              </div>
-            </div>
-
-            {/* 요청 사항 */}
-            <div style={{...S.grp,marginBottom:16}}>
-              <label style={S.lbl}>요청 사항</label>
-              <textarea value={customer.note} onChange={e=>updC('note',e.target.value)}
-                placeholder="납기 요청, 표면 처리, 후처리, 특이 사항 등을 입력하세요"
-                style={{...S.inp,minHeight:70,resize:'vertical'}}/>
-            </div>
-
-            {items.length===0&&(
-              <div style={{textAlign:'center',padding:'32px 0',color:'#9ca3af',fontSize:13}}>
-                업로드된 파일이 없습니다. 위에서 파일을 추가해 주세요.
-              </div>
-            )}
-
-            {/* 파일 아이템 목록 */}
-            {items.map((item,idx)=>(
-              <FileItemCard key={item.id} item={item} idx={idx} onChange={updateItem} onRemove={removeItem}/>
-            ))}
-
-            {items.length>0&&(
-              <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
-                <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
-                <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>setStep(3)}>견적 확인 →</button>
-              </div>
-            )}
-            {items.length===0&&(
-              <div style={{display:'flex',justifyContent:'flex-start',marginTop:8}}>
-                <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
-              </div>
-            )}
-          </>}
-
-          {/* ── STEP 3: 견적 확인 ── */}
-          {step===3&&<>
-            <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>아래 내용을 확인하고 견적 요청을 제출해 주세요.</p>
-
-            {/* 고객 정보 요약 */}
-            <div style={{background:'#f9fafb',borderRadius:10,padding:'12px 16px',marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:8}}>고객 정보</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                {[['이름',customer.name],['이메일',customer.email],['회사',customer.company||'-'],['연락처',customer.phone||'-']].map(([l,v])=>(
-                  <div key={l}><span style={{fontSize:11,color:'#9ca3af'}}>{l}: </span><span style={{fontSize:13,fontWeight:600}}>{v}</span></div>
-                ))}
-              </div>
-              {customer.note&&<div style={{marginTop:6,fontSize:12,color:'#6b7280'}}>요청사항: {customer.note}</div>}
-            </div>
-
-            {/* 파일별 요약 */}
-            {items.map((item,idx)=>(
-              <div key={item.id} style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 16px',marginBottom:10}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{display:'flex',alignItems:'center',gap:7}}>
-                    <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
-                    <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
-                  </div>
-                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPrice(item.method,item.vol,item.qm,item.qty,item.infill)):'담당자 산출'}</span>
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
-                  {[['방식',METHODS[item.method].label],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
-                    ['품질',item.quality],...(item.method==='FDM'?[['충전율',item.infill+'%']]:[] as [string,string][]),
-                    ...(item.sizeX!=null?[['크기',`${item.sizeX}×${item.sizeY}×${item.sizeZ}mm`]]:[] as [string,string][]),
-                    ...(item.vol!=null?[['부피',item.vol+'㎤']]:[] as [string,string][]),
-                  ].map(([l,v])=>(
-                    <div key={l} style={{background:'#f9fafb',borderRadius:6,padding:'6px 8px'}}>
-                      <div style={{fontSize:10,color:'#9ca3af',marginBottom:1,fontWeight:600,textTransform:'uppercase' as const}}>{l}</div>
-                      <div style={{fontSize:12,fontWeight:600}}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{marginTop:8,fontSize:12,color:'#6b7280'}}>예상 납기: <b>{calcDays(item.method,item.qty)}</b> (영업일 기준)</div>
-              </div>
-            ))}
-
-            {/* 합계 */}
-            {items.length>1&&(
-              <div style={{background:'#eff6ff',borderRadius:10,padding:'12px 16px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style={{fontWeight:600,fontSize:14}}>전체 예상 합계 (VAT 별도)</span>
-                <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{krw(totalPrice)}</span>
-              </div>
-            )}
-
-            <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:20,alignItems:'flex-start'}}>
-              <span>⚠️</span><span>위 금액은 자동 계산 예상 견적입니다. 담당자 검토 후 <b>확정 견적을 이메일로 안내</b>드립니다.</span>
-            </div>
-
-            <div style={{display:'flex',justifyContent:'space-between'}}>
-              <button style={S.sBtn} onClick={()=>setStep(2)}>← 이전</button>
-              <button style={{...S.btn,background:loading?'#9ca3af':'#16a34a',color:'#fff',cursor:loading?'wait':'pointer'}} onClick={submit} disabled={loading}>
-                {loading?'제출 중...':'✓ 견적 요청 제출'}
-              </button>
-            </div>
-          </>}
-
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Logo() {
-  return (
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-      <div>
-        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>🖨️ 3D 프린팅 견적 시스템</div>
-        <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>FDM · SLA/DLP · SLS · MJF — 자동 견적 + 담당자 확인</div>
-      </div>
+    <div style={{ marginBottom:8 }}>
+      <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>{label}</div>
+      <div style={{ fontSize:14, fontWeight: bold ? 700 : 500 }}>{value}</div>
     </div>
   )
 }
