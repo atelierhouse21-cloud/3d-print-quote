@@ -37,11 +37,35 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { key = 'print_options', value } = body
     
-    const { data, error } = await supabaseAdmin
+    // 기존 설정 확인
+    const { data: existing } = await supabaseAdmin
       .from('settings')
-      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-      .select()
+      .select('id')
+      .eq('key', key)
       .single()
+    
+    let data, error
+    
+    if (existing) {
+      // 기존 설정 업데이트
+      const result = await supabaseAdmin
+        .from('settings')
+        .update({ value, updated_at: new Date().toISOString() })
+        .eq('key', key)
+        .select()
+        .single()
+      data = result.data
+      error = result.error
+    } else {
+      // 새 설정 삽입
+      const result = await supabaseAdmin
+        .from('settings')
+        .insert({ key, value, updated_at: new Date().toISOString() })
+        .select()
+        .single()
+      data = result.data
+      error = result.error
+    }
     
     if (error) {
       console.error('[SETTINGS] POST error:', error)
