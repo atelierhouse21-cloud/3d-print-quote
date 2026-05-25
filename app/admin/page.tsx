@@ -105,6 +105,65 @@ function Milestone({ status }: { status: string }) {
           </div>
         )
       })}
+      ) : tab === 'settings' && editSettings ? (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <h2 style={{ fontSize:18, fontWeight:700 }}>견적 옵션 설정</h2>
+            <button onClick={saveSettings} style={{
+              padding:'10px 20px', background:'#2563eb', color:'#fff',
+              border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer'
+            }}>
+              💾 저장
+            </button>
+          </div>
+          
+          <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>출력 방식</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+              {['FDM', 'SLA', 'MJF', 'SLS'].map(method => (
+                <label key={method} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.methods?.includes(method)}
+                    onChange={e=>{
+                      const methods = e.target.checked
+                        ? [...(editSettings.methods||[]), method]
+                        : (editSettings.methods||[]).filter((m:string)=>m!==method)
+                      setEditSettings({...editSettings, methods})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14, fontWeight:600 }}>{method}</span>
+                </label>
+              ))}
+            </div>
+            
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16, paddingTop:16, borderTop:'1px solid #e5e7eb' }}>품질</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+              {['Draft (0.3mm)', 'Standard (0.2mm)', 'Fine (0.1mm)'].map(quality => (
+                <label key={quality} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.qualities?.includes(quality)}
+                    onChange={e=>{
+                      const qualities = e.target.checked
+                        ? [...(editSettings.qualities||[]), quality]
+                        : (editSettings.qualities||[]).filter((q:string)=>q!==quality)
+                      setEditSettings({...editSettings, qualities})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14 }}>{quality}</span>
+                </label>
+              ))}
+            </div>
+            
+            <p style={{ fontSize:13, color:'#6b7280', background:'#f9fafb', padding:12, borderRadius:8 }}>
+              ℹ️ 소재와 색상은 출력 방식별로 자동 관리됩니다. 체크한 옵션만 견적 요청 페이지에 표시됩니다.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -364,7 +423,7 @@ export default function AdminPage() {
             </button>
           </div>
         </Section>
-      ) : (
+      ) : tab === 'quotes' && selected ? (
         <Section title="처리 결과">
           {sel.admin_price && <Info label="확정 금액" value={krw(sel.admin_price)} bold />}
           {sel.admin_days  && <Info label="확정 납기" value={sel.admin_days} />}
@@ -434,6 +493,65 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+      ) : tab === 'settings' && editSettings ? (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <h2 style={{ fontSize:18, fontWeight:700 }}>견적 옵션 설정</h2>
+            <button onClick={saveSettings} style={{
+              padding:'10px 20px', background:'#2563eb', color:'#fff',
+              border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer'
+            }}>
+              💾 저장
+            </button>
+          </div>
+          
+          <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>출력 방식</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+              {['FDM', 'SLA', 'MJF', 'SLS'].map(method => (
+                <label key={method} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.methods?.includes(method)}
+                    onChange={e=>{
+                      const methods = e.target.checked
+                        ? [...(editSettings.methods||[]), method]
+                        : (editSettings.methods||[]).filter((m:string)=>m!==method)
+                      setEditSettings({...editSettings, methods})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14, fontWeight:600 }}>{method}</span>
+                </label>
+              ))}
+            </div>
+            
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16, paddingTop:16, borderTop:'1px solid #e5e7eb' }}>품질</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+              {['Draft (0.3mm)', 'Standard (0.2mm)', 'Fine (0.1mm)'].map(quality => (
+                <label key={quality} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.qualities?.includes(quality)}
+                    onChange={e=>{
+                      const qualities = e.target.checked
+                        ? [...(editSettings.qualities||[]), quality]
+                        : (editSettings.qualities||[]).filter((q:string)=>q!==quality)
+                      setEditSettings({...editSettings, qualities})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14 }}>{quality}</span>
+                </label>
+              ))}
+            </div>
+            
+            <p style={{ fontSize:13, color:'#6b7280', background:'#f9fafb', padding:12, borderRadius:8 }}>
+              ℹ️ 소재와 색상은 출력 방식별로 자동 관리됩니다. 체크한 옵션만 견적 요청 페이지에 표시됩니다.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -443,6 +561,65 @@ function Section({ title, children, style }: { title: string; children: React.Re
     <div style={{ background:'#f9fafb', borderRadius:12, padding:18, marginBottom:12, ...style }}>
       <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:12 }}>{title}</div>
       {children}
+      ) : tab === 'settings' && editSettings ? (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <h2 style={{ fontSize:18, fontWeight:700 }}>견적 옵션 설정</h2>
+            <button onClick={saveSettings} style={{
+              padding:'10px 20px', background:'#2563eb', color:'#fff',
+              border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer'
+            }}>
+              💾 저장
+            </button>
+          </div>
+          
+          <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>출력 방식</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+              {['FDM', 'SLA', 'MJF', 'SLS'].map(method => (
+                <label key={method} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.methods?.includes(method)}
+                    onChange={e=>{
+                      const methods = e.target.checked
+                        ? [...(editSettings.methods||[]), method]
+                        : (editSettings.methods||[]).filter((m:string)=>m!==method)
+                      setEditSettings({...editSettings, methods})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14, fontWeight:600 }}>{method}</span>
+                </label>
+              ))}
+            </div>
+            
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16, paddingTop:16, borderTop:'1px solid #e5e7eb' }}>품질</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+              {['Draft (0.3mm)', 'Standard (0.2mm)', 'Fine (0.1mm)'].map(quality => (
+                <label key={quality} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.qualities?.includes(quality)}
+                    onChange={e=>{
+                      const qualities = e.target.checked
+                        ? [...(editSettings.qualities||[]), quality]
+                        : (editSettings.qualities||[]).filter((q:string)=>q!==quality)
+                      setEditSettings({...editSettings, qualities})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14 }}>{quality}</span>
+                </label>
+              ))}
+            </div>
+            
+            <p style={{ fontSize:13, color:'#6b7280', background:'#f9fafb', padding:12, borderRadius:8 }}>
+              ℹ️ 소재와 색상은 출력 방식별로 자동 관리됩니다. 체크한 옵션만 견적 요청 페이지에 표시됩니다.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -452,6 +629,65 @@ function Info({ label, value, bold }: { label: string; value: string; bold?: boo
     <div style={{ marginBottom:8 }}>
       <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>{label}</div>
       <div style={{ fontSize:14, fontWeight: bold ? 700 : 500 }}>{value}</div>
+      ) : tab === 'settings' && editSettings ? (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+            <h2 style={{ fontSize:18, fontWeight:700 }}>견적 옵션 설정</h2>
+            <button onClick={saveSettings} style={{
+              padding:'10px 20px', background:'#2563eb', color:'#fff',
+              border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer'
+            }}>
+              💾 저장
+            </button>
+          </div>
+          
+          <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>출력 방식</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+              {['FDM', 'SLA', 'MJF', 'SLS'].map(method => (
+                <label key={method} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.methods?.includes(method)}
+                    onChange={e=>{
+                      const methods = e.target.checked
+                        ? [...(editSettings.methods||[]), method]
+                        : (editSettings.methods||[]).filter((m:string)=>m!==method)
+                      setEditSettings({...editSettings, methods})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14, fontWeight:600 }}>{method}</span>
+                </label>
+              ))}
+            </div>
+            
+            <h3 style={{ fontSize:16, fontWeight:700, marginBottom:16, paddingTop:16, borderTop:'1px solid #e5e7eb' }}>품질</h3>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+              {['Draft (0.3mm)', 'Standard (0.2mm)', 'Fine (0.1mm)'].map(quality => (
+                <label key={quality} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editSettings.qualities?.includes(quality)}
+                    onChange={e=>{
+                      const qualities = e.target.checked
+                        ? [...(editSettings.qualities||[]), quality]
+                        : (editSettings.qualities||[]).filter((q:string)=>q!==quality)
+                      setEditSettings({...editSettings, qualities})
+                    }}
+                    style={{ width:18, height:18, cursor:'pointer' }}
+                  />
+                  <span style={{ fontSize:14 }}>{quality}</span>
+                </label>
+              ))}
+            </div>
+            
+            <p style={{ fontSize:13, color:'#6b7280', background:'#f9fafb', padding:12, borderRadius:8 }}>
+              ℹ️ 소재와 색상은 출력 방식별로 자동 관리됩니다. 체크한 옵션만 견적 요청 페이지에 표시됩니다.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
