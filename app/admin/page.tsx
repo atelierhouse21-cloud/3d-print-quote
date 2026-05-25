@@ -22,6 +22,7 @@ const BADGE: Record<string, React.CSSProperties> = {
   post_processing: { background:'#fdf4ff', color:'#86198f', border:'1px solid #f0abfc' },
   shipping_ready: { background:'#f0fdfa', color:'#134e4a', border:'1px solid #5eead4' },
   shipped: { background:'#f0fdf4', color:'#14532d', border:'1px solid #86efac' },
+  issue_reported: { background:'#fef2f2', color:'#991b1b', border:'1px solid #fca5a5' },
   rejected: { background:'#fef2f2', color:'#7f1d1d', border:'1px solid #fca5a5' },
 }
 
@@ -32,7 +33,8 @@ const BADGE_LABEL: Record<string, string> = {
   printing:'출력 중',
   post_processing:'후처리 중',
   shipping_ready:'배송 준비',
-  shipped:'배송 완료',
+  shipped:'발송 완료',
+  issue_reported:'문제 상황',
   rejected:'거절됨' 
 }
 
@@ -43,7 +45,8 @@ const STATUS_LABELS: Record<string, string> = {
   printing: '출력 중',
   post_processing: '후처리 중',
   shipping_ready: '배송 준비',
-  shipped: '배송 완료',
+  shipped: '발송 완료',
+  issue_reported: '문제 상황 접수',
   rejected: '거절',
 }
 
@@ -73,7 +76,7 @@ function Milestone({ status }: { status: string }) {
     { key: 'printing', label: '출력중' },
     { key: 'post_processing', label: '후처리' },
     { key: 'shipping_ready', label: '배송준비' },
-    { key: 'shipped', label: '배송완료' },
+    { key: 'shipped', label: '발송완료' },
   ]
   
   const currentIdx = steps.findIndex(s => s.key === status)
@@ -291,7 +294,7 @@ export default function AdminPage() {
                 
                 if (!company) { alert('배송사를 선택하거나 입력하세요'); return }
                 if (!trackingNo) { alert('송장번호를 입력하세요'); return }
-                if (!confirm('배송 정보를 등록하고 배송 완료 상태로 변경하시겠습니까?')) return
+                if (!confirm('배송 정보를 등록하고 발송 완료 상태로 변경하시겠습니까?')) return
                 
                 try {
                   const res = await fetch(`/api/quotes/${sel.id}`, {
@@ -301,12 +304,12 @@ export default function AdminPage() {
                   })
                   const json = await res.json()
                   if (!json.ok) throw new Error(json.error)
-                  alert('배송 완료 처리되고 고객에게 이메일이 발송되었습니다.')
+                  alert('발송 완료 처리되고 고객에게 이메일이 발송되었습니다.')
                   refresh()
                 } catch(e:any) { alert('오류: '+e.message) }
               }}
               style={{ padding:'10px 20px', background:'#10b981', color:'#fff', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer', width:'100%' }}>
-              📦 배송 완료 처리
+              📦 발송 완료 처리
             </button>
           </div>
         )}
@@ -393,6 +396,48 @@ export default function AdminPage() {
           {(sel as any).final_price && <Info label="확정 금액" value={krw((sel as any).final_price)} bold />}
           {(sel as any).final_days  && <Info label="확정 납기" value={(sel as any).final_days} />}
           {(sel as any).admin_note  && <Info label="관리자 메모" value={(sel as any).admin_note} />}
+          
+          {sel.status === 'shipped' && (
+            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12 }}>
+                <Info label="배송사" value={(sel as any).shipping_company || '-'} />
+                <Info label="송장번호" value={(sel as any).tracking_number || '-'} bold />
+              </div>
+            </div>
+          )}
+          
+          {sel.status === 'issue_reported' && (
+            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+              <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>문제 상황 내용</label>
+              <textarea
+                defaultValue={(sel as any).issue_note || ''}
+                id={`issue-note-${sel.id}`}
+                placeholder="발생한 문제 상황을 상세히 입력하세요..."
+                style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, minHeight:100, resize:'vertical', fontFamily:'inherit' }}
+              />
+              <button
+                onClick={async () => {
+                  const textarea = document.getElementById(`issue-note-${sel.id}`) as HTMLTextAreaElement
+                  const issueNote = textarea.value.trim()
+                  if (!issueNote) { alert('문제 상황 내용을 입력하세요'); return }
+                  if (!confirm('문제 상황을 저장하시겠습니까?')) return
+                  try {
+                    const res = await fetch(`/api/quotes/${sel.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+                      body: JSON.stringify({ action: 'update_issue', issue_note: issueNote })
+                    })
+                    const json = await res.json()
+                    if (!json.ok) throw new Error(json.error)
+                    alert('문제 상황이 저장되었습니다.')
+                    refresh()
+                  } catch(e:any) { alert('오류: '+e.message) }
+                }}
+                style={{ marginTop:8, padding:'8px 16px', background:'#dc2626', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                💾 문제 상황 저장
+              </button>
+            </div>
+          )}
         </Section>
       )}
     </div>
