@@ -6,7 +6,7 @@ import { krw } from '@/lib/constants'
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 // 이메일 템플릿 함수들
-function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: string) {
+function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: string, shippingCompany?: string) {
   const templates: Record<string, any> = {
     payment_confirmed: {
       subject: `[${quote.quote_no}] 결제가 확인되었습니다`,
@@ -71,10 +71,16 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">🚚 배송 시작</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
-          <p style="margin-bottom:20px;">제품이 발송되었습니다. 아래 송장번호로 배송 조회가 가능합니다.</p>
-          <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;padding:16px;font-size:14px;color:#14532d;text-align:center;">
-            <div style="margin-bottom:8px;font-weight:700;">송장번호</div>
-            <div style="font-size:20px;font-weight:800;color:#15803d;">${trackingNumber || '-'}</div>
+          <p style="margin-bottom:20px;">제품이 발송되었습니다. 아래 정보로 배송 조회가 가능합니다.</p>
+          <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;padding:16px;font-size:14px;color:#14532d;">
+            <div style="display:grid;grid-template-columns:100px 1fr;gap:12px;margin-bottom:12px;">
+              <div style="color:#6b7280;font-weight:600;">배송사</div>
+              <div style="font-weight:700;">${shippingCompany || '-'}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:100px 1fr;gap:12px;">
+              <div style="color:#6b7280;font-weight:600;">송장번호</div>
+              <div style="font-size:18px;font-weight:800;color:#15803d;">${trackingNumber || '-'}</div>
+            </div>
           </div>
           <p style="margin-top:16px;font-size:13px;color:#6b7280;">택배사 홈페이지에서 배송 현황을 확인하실 수 있습니다.</p>
         </div>
@@ -141,16 +147,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     // ── 배송 완료 처리 ──
     if (action === 'ship') {
-      const { tracking_number } = body
+      const { shipping_company, tracking_number } = body
       const { error: updateErr } = await supabaseAdmin
         .from('quotes')
-        .update({ status: 'shipped', tracking_number })
+        .update({ status: 'shipped', shipping_company, tracking_number })
         .eq('id', params.id)
       if (updateErr) throw updateErr
 
-      console.log('[API] Shipped with tracking:', tracking_number)
+      console.log('[API] Shipped / Company:', shipping_company, '/ Tracking:', tracking_number)
 
-      const template = getStatusEmailTemplate('shipped', quote, tracking_number)
+      const template = getStatusEmailTemplate('shipped', quote, tracking_number, shipping_company)
       const emailResult = await resend.emails.send({
         from: process.env.FROM_EMAIL!,
         to: quote.email,
