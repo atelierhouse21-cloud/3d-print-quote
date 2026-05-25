@@ -71,6 +71,8 @@ export type Quote = {
   final_price?: number
   final_days?: string
   tracking_number?: string
-  status: 'pending' | 'approved' | 'rejected' | 'payment_confirmed' | 'printing' | 'post_processing' | 'shipping_ready' | 'shipped'
+  shipping_company?: string
+  issue_note?: string
+  status: 'pending' | 'approved' | 'rejected' | 'payment_confirmed' | 'printing' | 'post_processing' | 'shipping_ready' | 'shipped' | 'issue_reported'
   created_at: string
 }
