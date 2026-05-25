@@ -1,27 +1,55 @@
--- 설정 테이블 생성
-create table if not exists settings (
-  id uuid primary key default gen_random_uuid(),
-  key text unique not null,
-  value jsonb not null,
-  updated_at timestamptz default now()
-);
+export const dynamic = 'force-dynamic'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
--- 기본 설정값 삽입
-insert into settings (key, value) values 
-('print_options', '{
-  "methods": ["FDM", "SLA", "MJF", "SLS"],
-  "materials": {
-    "FDM": ["PLA", "ABS", "PETG", "TPU", "Nylon"],
-    "SLA": ["Standard Resin", "Tough Resin", "Flexible Resin"],
-    "MJF": ["PA12 (Nylon)", "PA11"],
-    "SLS": ["PA12 (Nylon)", "TPU"]
-  },
-  "colors": {
-    "FDM": ["White", "Black", "Gray", "Red", "Blue", "Green", "Yellow", "Orange", "Natural"],
-    "SLA": ["White", "Clear", "Black", "Gray"],
-    "MJF": ["Black", "Gray"],
-    "SLS": ["White", "Black", "Gray"]
-  },
-  "qualities": ["Draft (0.3mm)", "Standard (0.2mm)", "Fine (0.1mm)"]
-}'::jsonb)
-on conflict (key) do nothing;
+// GET: 설정 조회
+export async function GET(req: NextRequest) {
+  try {
+    const supabaseAdmin = getSupabaseAdmin()
+    const key = req.nextUrl.searchParams.get('key') || 'print_options'
+    
+    const { data, error } = await supabaseAdmin
+      .from('settings')
+      .select('*')
+      .eq('key', key)
+      .single()
+    
+    if (error) {
+      console.error('[SETTINGS] GET error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    
+    return NextResponse.json(data?.value || {})
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+// POST: 설정 업데이트 (관리자만)
+export async function POST(req: NextRequest) {
+  try {
+    const pw = req.headers.get('x-admin-password')
+    if (pw !== process.env.ADMIN_PASSWORD) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    
+    const supabaseAdmin = getSupabaseAdmin()
+    const body = await req.json()
+    const { key = 'print_options', value } = body
+    
+    const { data, error } = await supabaseAdmin
+      .from('settings')
+      .upsert({ key, value, updated_at: new Date().toISOString() })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error('[SETTINGS] POST error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    
+    return NextResponse.json({ ok: true, data })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
