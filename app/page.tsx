@@ -48,7 +48,7 @@ function calcBBox(v: Float32Array) {
   return { x:parseFloat((x1-x0).toFixed(1)), y:parseFloat((y1-y0).toFixed(1)), z:parseFloat((z1-z0).toFixed(1)), cx:(x0+x1)/2, cy:(y0+y1)/2, cz:(z0+z1)/2 }
 }
 
-// ── STL 뷰어 (소형) ──────────────────────────────────
+// ── STL 뷰어 ──────────────────────────────────────────
 type STLInfo = { x:number; y:number; z:number; volume:number }
 function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -84,8 +84,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
   useEffect(() => { if (!loading) draw() }, [loading, tick])
 
   useEffect(() => {
-    const el = viewerRef.current
-    if (!el) return
+    const el = viewerRef.current; if (!el) return
     const wheelH = (e: WheelEvent) => {
       e.preventDefault()
       zoom.current *= e.deltaY > 0 ? 0.9 : 1.1
@@ -200,22 +199,63 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
   )
 }
 
-// ── 타입 정의 ─────────────────────────────────────────
+// ── 타입 ──────────────────────────────────────────────
 type FileItem = {
-  id: string
-  file: File
-  vol: number | null
-  sizeX: number | null; sizeY: number | null; sizeZ: number | null
-  method: string; material: string; color: string; quality: string; qm: number
-  qty: number; infill: number
+  id:string; file:File
+  vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null
+  method:string; material:string; color:string; quality:string; qm:number
+  qty:number; infill:number
 }
 type CustomerForm = { name:string; email:string; company:string; phone:string; note:string }
 
-const newFileItem = (file: File): FileItem => ({
-  id: Math.random().toString(36).slice(2),
-  file, vol:null, sizeX:null, sizeY:null, sizeZ:null,
-  method:'FDM', material:'PLA', color:'White', quality:'Standard (0.2mm)', qm:1.0, qty:1, infill:20,
-})
+// ── 설정 기반 옵션 헬퍼 ────────────────────────────────
+type PrintOptions = Record<string, {
+  enabled: boolean
+  colors: string[]
+  materials: string[]
+  qualities: string[]
+}>
+
+function getColors(options: PrintOptions | null, method: string): string[] {
+  if (options?.[method]?.colors?.length) return options[method].colors
+  return COLS[method] || []
+}
+function getMaterials(options: PrintOptions | null, method: string): string[] {
+  if (options?.[method]?.materials?.length) return options[method].materials
+  return MATS[method] || []
+}
+function getQualities(options: PrintOptions | null, method: string): { v:string; m:number }[] {
+  if (options?.[method]?.qualities?.length) {
+    return options[method].qualities.map((v: string) => {
+      const found = (QUAL[method] || []).find(q => q.v === v)
+      return found || { v, m: 1.0 }
+    })
+  }
+  return QUAL[method] || []
+}
+function getEnabledMethods(options: PrintOptions | null): [string, typeof METHODS[string]][] {
+  if (!options) return Object.entries(METHODS)
+  return Object.entries(METHODS).filter(([k]) => options[k]?.enabled !== false && options[k])
+}
+
+// ── FileItem 초기값 (설정 기반) ───────────────────────
+function newFileItem(file: File, options: PrintOptions | null): FileItem {
+  const enabledMethods = getEnabledMethods(options)
+  const method = enabledMethods[0]?.[0] || 'FDM'
+  const colors    = getColors(options, method)
+  const materials = getMaterials(options, method)
+  const qualities = getQualities(options, method)
+  return {
+    id: Math.random().toString(36).slice(2),
+    file, vol:null, sizeX:null, sizeY:null, sizeZ:null,
+    method,
+    material:  materials[0]  || 'PLA',
+    color:     colors[0]     || 'White',
+    quality:   qualities[0]?.v || 'Standard (0.2mm)',
+    qm:        qualities[0]?.m || 1.0,
+    qty: 1, infill: 20,
+  }
+}
 
 const S: Record<string,React.CSSProperties> = {
   wrap: {maxWidth:820,margin:'0 auto',padding:'20px 16px 60px'},
@@ -229,21 +269,34 @@ const S: Record<string,React.CSSProperties> = {
 }
 
 // ── 파일 아이템 카드 ──────────────────────────────────
-function FileItemCard({ item, idx, onChange, onRemove }: {
-  item: FileItem; idx: number
+function FileItemCard({ item, idx, options, onChange, onRemove }: {
+  item: FileItem; idx: number; options: PrintOptions | null
   onChange: (id:string, key:keyof FileItem, val:any)=>void
   onRemove: (id:string)=>void
 }) {
-  const updMethod = (m:string) => {
-    onChange(item.id,'method',m); onChange(item.id,'material',MATS[m][0])
-    onChange(item.id,'color',COLS[m][0]); onChange(item.id,'quality',QUAL[m][0].v); onChange(item.id,'qm',QUAL[m][0].m)
+  const enabledMethods = getEnabledMethods(options)
+  const colors    = getColors(options, item.method)
+  const materials = getMaterials(options, item.method)
+  const qualities = getQualities(options, item.method)
+
+  // 방식 변경 시 귀속 설정 초기화
+  const updMethod = (m: string) => {
+    const newColors    = getColors(options, m)
+    const newMaterials = getMaterials(options, m)
+    const newQualities = getQualities(options, m)
+    onChange(item.id, 'method',   m)
+    onChange(item.id, 'material', newMaterials[0] || '')
+    onChange(item.id, 'color',    newColors[0]    || '')
+    onChange(item.id, 'quality',  newQualities[0]?.v || '')
+    onChange(item.id, 'qm',       newQualities[0]?.m || 1.0)
   }
+
   const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
-  const price = item.vol ? calcPrice(item.method,item.vol,item.qm,item.qty,item.infill) : 0
+  const price = item.vol ? calcPrice(item.method, item.vol, item.qm, item.qty, item.infill) : 0
 
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
-      {/* 카드 헤더 */}
+      {/* 헤더 */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 16px',background:'#f9fafb',borderBottom:'1px solid #e5e7eb'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>{idx+1}</span>
@@ -252,9 +305,8 @@ function FileItemCard({ item, idx, onChange, onRemove }: {
         <button onClick={()=>onRemove(item.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:18,lineHeight:1,padding:'0 4px'}}>✕</button>
       </div>
 
-      {/* 본문: 미리보기(좌) + 설정(우) */}
+      {/* 본문 */}
       <div style={{display:'grid',gridTemplateColumns:isSTL?'1fr 1fr':'1fr',gap:0}}>
-        {/* 좌: STL 미리보기 */}
         {isSTL && (
           <div style={{padding:14,borderRight:'1px solid #e5e7eb'}}>
             <STLViewer height={220} file={item.file} onAnalyzed={info=>{
@@ -264,13 +316,12 @@ function FileItemCard({ item, idx, onChange, onRemove }: {
           </div>
         )}
 
-        {/* 우: 출력 설정 */}
         <div style={{padding:14}}>
           {/* 출력 방식 */}
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:'#374151',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:6}}>출력 방식</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}>
-              {Object.entries(METHODS).map(([k,m])=>(
+              {enabledMethods.map(([k, m])=>(
                 <button key={k} onClick={()=>updMethod(k)} style={{
                   border:item.method===k?'2px solid #2563eb':'1px solid #e5e7eb',
                   borderRadius:7,padding:'6px 8px',cursor:'pointer',textAlign:'left',
@@ -282,27 +333,27 @@ function FileItemCard({ item, idx, onChange, onRemove }: {
             </div>
           </div>
 
-          {/* 소재 / 색상 / 품질 */}
+          {/* 소재 / 색상 / 품질 / 수량 */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
             <div style={S.grp}>
               <label style={S.lbl}>소재</label>
               <select value={item.material} onChange={e=>onChange(item.id,'material',e.target.value)} style={{...S.inp,fontSize:12}}>
-                {MATS[item.method].map(v=><option key={v}>{v}</option>)}
+                {materials.map(v=><option key={v}>{v}</option>)}
               </select>
             </div>
             <div style={S.grp}>
               <label style={S.lbl}>색상</label>
               <select value={item.color} onChange={e=>onChange(item.id,'color',e.target.value)} style={{...S.inp,fontSize:12}}>
-                {COLS[item.method].map(v=><option key={v}>{v}</option>)}
+                {colors.map(v=><option key={v}>{v}</option>)}
               </select>
             </div>
             <div style={S.grp}>
               <label style={S.lbl}>품질</label>
               <select value={item.quality} onChange={e=>{
-                const q=QUAL[item.method].find(x=>x.v===e.target.value)
+                const q = qualities.find(x=>x.v===e.target.value)
                 onChange(item.id,'quality',e.target.value); onChange(item.id,'qm',q?.m||1.0)
               }} style={{...S.inp,fontSize:12}}>
-                {QUAL[item.method].map(q=><option key={q.v}>{q.v}</option>)}
+                {qualities.map(q=><option key={q.v}>{q.v}</option>)}
               </select>
             </div>
             <div style={S.grp}>
@@ -337,33 +388,48 @@ function FileItemCard({ item, idx, onChange, onRemove }: {
   )
 }
 
-// ── 메인 컴포넌트 ─────────────────────────────────────
+// ── 메인 ──────────────────────────────────────────────
 export default function Home() {
-  const [step, setStep] = useState(1)
-  const [options, setOptions] = useState<any>(null)
-  const [done, setDone] = useState<string|null>(null)
+  const [step, setStep]       = useState(1)
+  const [options, setOptions] = useState<PrintOptions | null>(null)
+  const [optLoaded, setOptLoaded] = useState(false)
+  const [done, setDone]       = useState<string|null>(null)
   const [loading, setLoading] = useState(false)
   const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',note:''})
-  const [items, setItems] = useState<FileItem[]>([])
-  const [drag, setDrag] = useState(false)
+  const [items, setItems]     = useState<FileItem[]>([])
+  const [drag, setDrag]       = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const updC = (k:keyof CustomerForm, v:string) => setCustomer(p=>({...p,[k]:v}))
+  // ── 설정 로드 (페이지 시작 시) ──
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(raw => {
+        // 구버전 포맷 감지 및 변환
+        if (Array.isArray(raw?.methods) || !raw || Object.keys(raw).length === 0) {
+          // 설정이 없거나 구버전 → constants 기본값 사용
+          setOptions(null)
+        } else {
+          setOptions(raw as PrintOptions)
+        }
+      })
+      .catch(() => setOptions(null))   // 오류 시 constants 기본값 fallback
+      .finally(() => setOptLoaded(true))
+  }, [])
 
-  const handleFile = (f:File|null) => {
+  const updC = (k: keyof CustomerForm, v: string) => setCustomer(p=>({...p,[k]:v}))
+
+  const handleFile = (f: File | null) => {
     if (!f) return
     const ext = f.name.split('.').pop()?.toLowerCase()
-    if (ext !== 'stl') {
-      alert('STL 파일만 업로드 가능합니다.')
-      return
-    }
-    setItems(p=>[...p, newFileItem(f)])
+    if (ext !== 'stl') { alert('STL 파일만 업로드 가능합니다.'); return }
+    setItems(p => [...p, newFileItem(f, options)])
   }
 
-  const updateItem = (id:string, key:keyof FileItem, val:any) => {
-    setItems(p=>p.map(it=>it.id===id?{...it,[key]:val}:it))
+  const updateItem = (id: string, key: keyof FileItem, val: any) => {
+    setItems(p => p.map(it => it.id===id ? {...it,[key]:val} : it))
   }
-  const removeItem = (id:string) => setItems(p=>p.filter(it=>it.id!==id))
+  const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
   const totalPrice = items.reduce((sum,it)=>sum+(it.vol?calcPrice(it.method,it.vol,it.qm,it.qty,it.infill):0),0)
 
@@ -371,36 +437,28 @@ export default function Home() {
     setLoading(true)
     try {
       const primary = items[0]
-
-      // ── Step 1: 견적 데이터만 서버로 전송 (파일 제외) ──
-      // 추가 파일 정보를 note에 포함
       let finalNote = customer.note
       if (items.length > 1) {
         const extraInfo = items.slice(1).map((it,i)=>`[파일${i+2}: ${it.file.name}, ${it.method}, ${it.material}, ${it.qty}개]`).join(' ')
         finalNote = customer.note + (customer.note?'\n':'') + '추가파일: ' + extraInfo
       }
-
       const payload = {
         name: customer.name, email: customer.email,
-        company: customer.company, phone: customer.phone,
-        note: finalNote,
+        company: customer.company, phone: customer.phone, note: finalNote,
         method: primary.method, material: primary.material,
         color: primary.color, quality: primary.quality,
         qty: primary.qty, infill: primary.infill,
         qm: primary.qm, vol: primary.vol || 0,
-        sizeX: primary.sizeX || 0, sizeY: primary.sizeY || 0, sizeZ: primary.sizeZ || 0,
+        sizeX: primary.sizeX||0, sizeY: primary.sizeY||0, sizeZ: primary.sizeZ||0,
         fileName: primary.file.name,
       }
-
       const res = await fetch('/api/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type':'application/json' },
         body: JSON.stringify(payload),
       })
       const json = await res.json()
       if (!json.ok) throw new Error(json.error)
 
-      // ── Step 2: 파일을 브라우저에서 직접 Supabase Storage에 업로드 ──
       if (primary.file && json.storage_path) {
         const { createClient } = await import('@supabase/supabase-js')
         const supabase = createClient(
@@ -409,16 +467,26 @@ export default function Home() {
         )
         const { error: upErr } = await supabase.storage
           .from('quote-files')
-          .upload(json.storage_path, primary.file, { upsert: false })
+          .upload(json.storage_path, primary.file, { upsert:false })
         if (upErr) console.error('파일 업로드 실패:', upErr.message)
       }
-
       setDone(json.quote_no)
     } catch(e:any) { alert('오류: '+e.message) }
     finally { setLoading(false) }
   }
 
   const STEP_LABELS = ['고객 정보','파일 업로드 & 출력 설정','견적 확인']
+
+  // 설정 로드 중 스피너
+  if (!optLoaded) return (
+    <div style={S.wrap}>
+      <Logo/>
+      <div style={{ textAlign:'center', padding:'60px 0', color:'#9ca3af' }}>
+        <div style={{ fontSize:28, marginBottom:10 }}>⏳</div>
+        <div style={{ fontSize:14 }}>옵션 정보를 불러오는 중...</div>
+      </div>
+    </div>
+  )
 
   if (done) return (
     <div style={S.wrap}><Logo/>
@@ -458,7 +526,7 @@ export default function Home() {
 
         <div style={S.body}>
 
-          {/* ── STEP 1: 고객 정보 ── */}
+          {/* ── STEP 1 ── */}
           {step===1&&<>
             <p style={{color:'#6b7280',marginBottom:20,fontSize:13}}>견적 요청자 정보를 입력해 주세요.</p>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:20}}>
@@ -466,7 +534,6 @@ export default function Home() {
               <div style={S.grp}><label style={S.lbl}>이메일 *</label><input type="email" value={customer.email} onChange={e=>updC('email',e.target.value)} placeholder="example@mail.com" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>회사 / 기관</label><input type="text" value={customer.company} onChange={e=>updC('company',e.target.value)} placeholder="(주)회사명 또는 개인" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>연락처</label><input type="tel" value={customer.phone} onChange={e=>updC('phone',e.target.value)} placeholder="010-0000-0000" style={S.inp}/></div>
-
             </div>
             <div style={{display:'flex',justifyContent:'flex-end'}}>
               <button style={{...S.btn,background:'#2563eb',color:'#fff'}}
@@ -476,11 +543,9 @@ export default function Home() {
             </div>
           </>}
 
-          {/* ── STEP 2: 파일 업로드 & 출력 설정 ── */}
+          {/* ── STEP 2 ── */}
           {step===2&&<>
-            <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>출력할 파일을 업로드하고 각 파일의 출력 설정을 선택해 주세요. 파일은 여러 개 추가 가능합니다.</p>
-
-            {/* 파일 업로드 존 */}
+            <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>출력할 파일을 업로드하고 각 파일의 출력 설정을 선택해 주세요.</p>
             <input ref={fileRef} type="file" accept=".stl" style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
             <div
               onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
@@ -498,26 +563,20 @@ export default function Home() {
                 </button>
               </div>
             </div>
-
-            {/* 요청 사항 */}
             <div style={{...S.grp,marginBottom:16}}>
               <label style={S.lbl}>요청 사항</label>
               <textarea value={customer.note} onChange={e=>updC('note',e.target.value)}
                 placeholder="납기 요청, 표면 처리, 후처리, 특이 사항 등을 입력하세요"
                 style={{...S.inp,minHeight:70,resize:'vertical'}}/>
             </div>
-
             {items.length===0&&(
               <div style={{textAlign:'center',padding:'32px 0',color:'#9ca3af',fontSize:13}}>
-                업로드된 파일이 없습니다. 위에서 파일을 추가해 주세요.
+                업로드된 파일이 없습니다.
               </div>
             )}
-
-            {/* 파일 아이템 목록 */}
             {items.map((item,idx)=>(
-              <FileItemCard key={item.id} item={item} idx={idx} onChange={updateItem} onRemove={removeItem}/>
+              <FileItemCard key={item.id} item={item} idx={idx} options={options} onChange={updateItem} onRemove={removeItem}/>
             ))}
-
             {items.length>0&&(
               <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
                 <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
@@ -531,11 +590,9 @@ export default function Home() {
             )}
           </>}
 
-          {/* ── STEP 3: 견적 확인 ── */}
+          {/* ── STEP 3 ── */}
           {step===3&&<>
             <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>아래 내용을 확인하고 견적 요청을 제출해 주세요.</p>
-
-            {/* 고객 정보 요약 */}
             <div style={{background:'#f9fafb',borderRadius:10,padding:'12px 16px',marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:8}}>고객 정보</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -546,7 +603,6 @@ export default function Home() {
               {customer.note&&<div style={{marginTop:6,fontSize:12,color:'#6b7280'}}>요청사항: {customer.note}</div>}
             </div>
 
-            {/* 파일별 요약 */}
             {items.map((item,idx)=>(
               <div key={item.id} style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 16px',marginBottom:10}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
@@ -557,7 +613,7 @@ export default function Home() {
                   <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPrice(item.method,item.vol,item.qm,item.qty,item.infill)):'담당자 산출'}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
-                  {[['방식',METHODS[item.method].label],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
+                  {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
                     ['품질',item.quality],...(item.method==='FDM'?[['충전율',item.infill+'%']]:[] as [string,string][]),
                     ...(item.sizeX!=null?[['크기',`${item.sizeX}×${item.sizeY}×${item.sizeZ}mm`]]:[] as [string,string][]),
                     ...(item.vol!=null?[['부피',item.vol+'㎤']]:[] as [string,string][]),
@@ -572,7 +628,6 @@ export default function Home() {
               </div>
             ))}
 
-            {/* 합계 */}
             {items.length>1&&(
               <div style={{background:'#eff6ff',borderRadius:10,padding:'12px 16px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <span style={{fontWeight:600,fontSize:14}}>전체 예상 합계 (VAT 별도)</span>
