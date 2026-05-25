@@ -340,6 +340,7 @@ function FileItemCard({ item, idx, onChange, onRemove }: {
 // ── 메인 컴포넌트 ─────────────────────────────────────
 export default function Home() {
   const [step, setStep] = useState(1)
+  const [options, setOptions] = useState<any>(null)
   const [done, setDone] = useState<string|null>(null)
   const [loading, setLoading] = useState(false)
   const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',note:''})
@@ -601,7 +602,7 @@ function Logo() {
   return (
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
       <div>
-        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>🪢아틀리에 하우스 3D 프린팅 견적 시스템</div>
+        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>🖨️ 3D 프린팅 견적 시스템</div>
         <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>FDM · SLA/DLP · SLS · MJF — 자동 견적 + 담당자 확인</div>
       </div>
     </div>
