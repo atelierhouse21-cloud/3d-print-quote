@@ -242,37 +242,72 @@ export default function AdminPage() {
         </div>
         {sel.status === 'shipping_ready' && (
           <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>송장번호</label>
-            <div style={{ display:'flex', gap:8 }}>
-              <input
-                type="text"
-                placeholder="송장번호 입력"
-                defaultValue={(sel as any).tracking_number || ''}
-                id={`tracking-${sel.id}`}
-                style={{ flex:1, padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }}
-              />
-              <button
-                onClick={async () => {
-                  const input = document.getElementById(`tracking-${sel.id}`) as HTMLInputElement
-                  const trackingNo = input?.value.trim()
-                  if (!trackingNo) { alert('송장번호를 입력하세요'); return }
-                  if (!confirm('송장번호를 등록하고 배송 완료 상태로 변경하시겠습니까?')) return
-                  try {
-                    const res = await fetch(`/api/quotes/${sel.id}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type':'application/json', 'x-admin-password': password },
-                      body: JSON.stringify({ action: 'ship', tracking_number: trackingNo })
-                    })
-                    const json = await res.json()
-                    if (!json.ok) throw new Error(json.error)
-                    alert('배송 완료 처리되고 고객에게 이메일이 발송되었습니다.')
-                    refresh()
-                  } catch(e:any) { alert('오류: '+e.message) }
-                }}
-                style={{ padding:'8px 16px', background:'#10b981', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                배송 완료
-              </button>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12, marginBottom:12 }}>
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>배송사</label>
+                <select
+                  id={`company-${sel.id}`}
+                  defaultValue={(sel as any).shipping_company || '우체국택배'}
+                  onChange={(e) => {
+                    const customInput = document.getElementById(`company-custom-${sel.id}`) as HTMLInputElement
+                    if (customInput) {
+                      customInput.style.display = e.target.value === '기타' ? 'block' : 'none'
+                    }
+                  }}
+                  style={{ width:'100%', padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }}>
+                  <option value="우체국택배">우체국택배</option>
+                  <option value="CJ대한통운">CJ대한통운</option>
+                  <option value="롯데택배">롯데택배</option>
+                  <option value="한진택배">한진택배</option>
+                  <option value="로젠택배">로젠택배</option>
+                  <option value="기타">기타 (직접입력)</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="배송사명 입력"
+                  id={`company-custom-${sel.id}`}
+                  style={{ width:'100%', padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, marginTop:8, display:'none' }}
+                />
+              </div>
+              <div>
+                <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>송장번호</label>
+                <input
+                  type="text"
+                  placeholder="송장번호 입력"
+                  defaultValue={(sel as any).tracking_number || ''}
+                  id={`tracking-${sel.id}`}
+                  style={{ width:'100%', padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }}
+                />
+              </div>
             </div>
+            <button
+              onClick={async () => {
+                const companySelect = document.getElementById(`company-${sel.id}`) as HTMLSelectElement
+                const companyCustom = document.getElementById(`company-custom-${sel.id}`) as HTMLInputElement
+                const trackingInput = document.getElementById(`tracking-${sel.id}`) as HTMLInputElement
+                
+                const company = companySelect.value === '기타' ? companyCustom.value.trim() : companySelect.value
+                const trackingNo = trackingInput.value.trim()
+                
+                if (!company) { alert('배송사를 선택하거나 입력하세요'); return }
+                if (!trackingNo) { alert('송장번호를 입력하세요'); return }
+                if (!confirm('배송 정보를 등록하고 배송 완료 상태로 변경하시겠습니까?')) return
+                
+                try {
+                  const res = await fetch(`/api/quotes/${sel.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+                    body: JSON.stringify({ action: 'ship', shipping_company: company, tracking_number: trackingNo })
+                  })
+                  const json = await res.json()
+                  if (!json.ok) throw new Error(json.error)
+                  alert('배송 완료 처리되고 고객에게 이메일이 발송되었습니다.')
+                  refresh()
+                } catch(e:any) { alert('오류: '+e.message) }
+              }}
+              style={{ padding:'10px 20px', background:'#10b981', color:'#fff', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer', width:'100%' }}>
+              📦 배송 완료 처리
+            </button>
           </div>
         )}
       </Section>
