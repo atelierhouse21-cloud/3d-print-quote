@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     
     const { data, error } = await supabaseAdmin
       .from('settings')
-      .upsert({ key, value, updated_at: new Date().toISOString() })
+      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
       .select()
       .single()
     
