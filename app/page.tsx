@@ -341,7 +341,6 @@ function FileItemCard({ item, idx, onChange, onRemove }: {
 export default function Home() {
   const [step, setStep] = useState(1)
   const [options, setOptions] = useState<any>(null)
-  const [options, setOptions] = useState<any>(null)
   const [done, setDone] = useState<string|null>(null)
   const [loading, setLoading] = useState(false)
   const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',note:''})
