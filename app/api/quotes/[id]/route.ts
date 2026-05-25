@@ -65,13 +65,28 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
         </div>
       `
     },
-    shipped: {
-      subject: `[${quote.quote_no}] 배송이 시작되었습니다`,
+    issue_reported: {
+      subject: `[${quote.quote_no}] 문제 상황이 접수되었습니다`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">🚚 배송 시작</h2>
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">⚠️ 문제 상황 접수</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
-          <p style="margin-bottom:20px;">제품이 발송되었습니다. 아래 정보로 배송 조회가 가능합니다.</p>
+          <p style="margin-bottom:20px;">주문하신 제품에 문제가 발생하여 확인 중입니다. 빠른 시일 내에 해결 방안을 안내드리겠습니다.</p>
+          <div style="background:#fef2f2;border:2px solid #ef4444;border-radius:8px;padding:16px;font-size:14px;color:#991b1b;">
+            <div style="font-weight:700;margin-bottom:8px;">견적 번호: ${quote.quote_no}</div>
+            <div>담당자가 확인 후 개별 연락드리겠습니다.</div>
+          </div>
+          <p style="margin-top:16px;font-size:13px;color:#6b7280;">문의사항은 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a>으로 연락 주시기 바랍니다.</p>
+        </div>
+      `
+    },
+    shipped: {
+      subject: `[${quote.quote_no}] 발송이 완료되었습니다`,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">🚚 발송 완료</h2>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:20px;">제품 발송이 완료되었습니다. 아래 정보로 배송 조회가 가능합니다.</p>
           <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;padding:16px;font-size:14px;color:#14532d;">
             <div style="display:grid;grid-template-columns:100px 1fr;gap:12px;margin-bottom:12px;">
               <div style="color:#6b7280;font-weight:600;">배송사</div>
@@ -238,6 +253,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         console.log('[EMAIL] 발송 성공:', emailResult.data?.id)
       }
 
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── 문제 상황 업데이트 ──
+    if (action === 'update_issue') {
+      const { issue_note } = body
+      const { error: updateErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ issue_note })
+        .eq('id', params.id)
+      if (updateErr) throw updateErr
+
+      console.log('[API] Issue note updated')
       return NextResponse.json({ ok: true })
     }
 
