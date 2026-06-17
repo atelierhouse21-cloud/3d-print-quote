@@ -2,6 +2,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { METHODS, MATS, COLS, QUAL, calcPrice, calcDays, krw } from '@/lib/constants'
 
+// ── 모바일(세로 화면) 감지 훅 ─────────────────────────
+// 화면 폭이 좁아지면 가로 배치를 세로(1열)로 자동 전환한다.
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < breakpoint)
+    check()
+    window.addEventListener('resize', check)
+    window.addEventListener('orientationchange', check)
+    return () => {
+      window.removeEventListener('resize', check)
+      window.removeEventListener('orientationchange', check)
+    }
+  }, [breakpoint])
+  return isMobile
+}
+
 // ── STL 파서 ──────────────────────────────────────────
 function isBinarySTL(buffer: ArrayBuffer) {
   const view = new DataView(buffer)
@@ -269,10 +286,11 @@ const S: Record<string,React.CSSProperties> = {
 }
 
 // ── 파일 아이템 카드 ──────────────────────────────────
-function FileItemCard({ item, idx, options, onChange, onRemove }: {
+function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   item: FileItem; idx: number; options: PrintOptions | null
   onChange: (id:string, key:keyof FileItem, val:any)=>void
   onRemove: (id:string)=>void
+  isMobile: boolean
 }) {
   const enabledMethods = getEnabledMethods(options)
   const colors    = getColors(options, item.method)
@@ -305,10 +323,10 @@ function FileItemCard({ item, idx, options, onChange, onRemove }: {
         <button onClick={()=>onRemove(item.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:18,lineHeight:1,padding:'0 4px'}}>✕</button>
       </div>
 
-      {/* 본문 */}
-      <div style={{display:'grid',gridTemplateColumns:isSTL?'1fr 1fr':'1fr',gap:0}}>
+      {/* 본문 — 폰에서는 미리보기(위) + 설정(아래) 1열로 쌓음 */}
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':(isSTL?'1fr 1fr':'1fr'),gap:0}}>
         {isSTL && (
-          <div style={{padding:14,borderRight:'1px solid #e5e7eb'}}>
+          <div style={{padding:14,borderRight:isMobile?'none':'1px solid #e5e7eb',borderBottom:isMobile?'1px solid #e5e7eb':'none'}}>
             <STLViewer height={220} file={item.file} onAnalyzed={info=>{
               onChange(item.id,'vol',info.volume)
               onChange(item.id,'sizeX',info.x); onChange(item.id,'sizeY',info.y); onChange(item.id,'sizeZ',info.z)
@@ -390,6 +408,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove }: {
 
 // ── 메인 ──────────────────────────────────────────────
 export default function Home() {
+  const isMobile = useIsMobile()
   const [step, setStep]       = useState(1)
   const [options, setOptions] = useState<PrintOptions | null>(null)
   const [optLoaded, setOptLoaded] = useState(false)
@@ -476,6 +495,7 @@ export default function Home() {
   }
 
   const STEP_LABELS = ['고객 정보','파일 업로드 & 출력 설정','견적 확인']
+  const STEP_LABELS_SHORT = ['고객 정보','파일 & 설정','견적 확인']
 
   // 설정 로드 중 스피너
   if (!optLoaded) return (
@@ -506,30 +526,30 @@ export default function Home() {
   return (
     <div style={S.wrap}><Logo/>
       <div style={S.card}>
-        {/* 진행 단계 */}
-        <div style={{display:'flex',alignItems:'center',padding:'16px 24px',background:'#f9fafb',borderBottom:'1px solid #e5e7eb'}}>
-          {STEP_LABELS.map((s,i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',flex:i<STEP_LABELS.length-1?1:undefined}}>
-              <div style={{display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
-                <div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,
+        {/* 진행 단계 — 폰에서는 축소 + 줄임 라벨로 잘림 방지 */}
+        <div style={{display:'flex',alignItems:'center',padding:isMobile?'13px 10px':'16px 24px',background:'#f9fafb',borderBottom:'1px solid #e5e7eb',overflow:'hidden'}}>
+          {(isMobile?STEP_LABELS_SHORT:STEP_LABELS).map((s,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',flex:i<STEP_LABELS.length-1?1:undefined,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:isMobile?5:7,flexShrink:0}}>
+                <div style={{width:isMobile?22:24,height:isMobile?22:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,
                   background:step>i+1?'#16a34a':step===i+1?'#2563eb':'#fff',
                   border:`2px solid ${step>i+1?'#16a34a':step===i+1?'#2563eb':'#d1d5db'}`,
                   color:step>i+1||step===i+1?'#fff':'#9ca3af'}}>
                   {step>i+1?'✓':i+1}
                 </div>
-                <span style={{fontSize:12,whiteSpace:'nowrap',color:step===i+1?'#1a1a1a':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
+                <span style={{fontSize:isMobile?11:12,whiteSpace:'nowrap',color:step===i+1?'#1a1a1a':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
               </div>
-              {i<STEP_LABELS.length-1&&<div style={{flex:1,height:1,background:'#d1d5db',margin:'0 8px'}}/>}
+              {i<STEP_LABELS.length-1&&<div style={{flex:1,height:1,background:'#d1d5db',margin:isMobile?'0 5px':'0 8px',minWidth:6}}/>}
             </div>
           ))}
         </div>
 
-        <div style={S.body}>
+        <div style={{...S.body,padding:isMobile?'18px 14px':'24px 24px'}}>
 
           {/* ── STEP 1 ── */}
           {step===1&&<>
             <p style={{color:'#6b7280',marginBottom:20,fontSize:13}}>견적 요청자 정보를 입력해 주세요.</p>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:20}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:14,marginBottom:20}}>
               <div style={S.grp}><label style={S.lbl}>이름 *</label><input type="text" value={customer.name} onChange={e=>updC('name',e.target.value)} placeholder="홍길동" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>이메일 *</label><input type="email" value={customer.email} onChange={e=>updC('email',e.target.value)} placeholder="example@mail.com" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>회사 / 기관</label><input type="text" value={customer.company} onChange={e=>updC('company',e.target.value)} placeholder="(주)회사명 또는 개인" style={S.inp}/></div>
@@ -575,7 +595,7 @@ export default function Home() {
               </div>
             )}
             {items.map((item,idx)=>(
-              <FileItemCard key={item.id} item={item} idx={idx} options={options} onChange={updateItem} onRemove={removeItem}/>
+              <FileItemCard key={item.id} item={item} idx={idx} options={options} onChange={updateItem} onRemove={removeItem} isMobile={isMobile}/>
             ))}
             {items.length>0&&(
               <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
@@ -612,7 +632,7 @@ export default function Home() {
                   </div>
                   <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPrice(item.method,item.vol,item.qm,item.qty,item.infill)):'담당자 산출'}</span>
                 </div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
+                <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
                     ['품질',item.quality],...(item.method==='FDM'?[['충전율',item.infill+'%']]:[] as [string,string][]),
                     ...(item.sizeX!=null?[['크기',`${item.sizeX}×${item.sizeY}×${item.sizeZ}mm`]]:[] as [string,string][]),
