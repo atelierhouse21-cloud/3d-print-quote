@@ -38,6 +38,15 @@ const STATUS_LABELS: Record<string, string> = {
   shipped:'발송 완료', issue_reported:'문제 상황 접수', rejected:'거절',
 }
 
+// ── 단계별 다음 처리(단순 상태 전환 + 안내 메일) ──
+// 견적 확정(approve)·발송(ship)은 별도 폼이 필요하므로 여기 포함하지 않는다.
+const NEXT_STEP: Record<string, { next: string; label: string }> = {
+  approved:          { next: 'payment_confirmed', label: '결제 확인 처리' },
+  payment_confirmed: { next: 'printing',          label: '출력 시작 처리' },
+  printing:          { next: 'post_processing',   label: '후처리 시작 처리' },
+  post_processing:   { next: 'shipping_ready',    label: '배송 준비 완료 처리' },
+}
+
 // ── 설정 정규화: 구버전(methods 배열) → 신버전(방식별 객체) 변환 ──
 function normalizeSettings(data: any) {
   const ALL_METHODS = ['FDM', 'SLA', 'SLS', 'MJF']
@@ -325,6 +334,25 @@ export default function AdminPage() {
     finally { setLoading(false) }
   }
 
+  const changeStatus = async (next: string, label: string) => {
+    if (!sel) return
+    if (!confirm(`"${label}"을(를) 진행하시겠습니까?\n고객에게 안내 메일이 발송됩니다.`)) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/quotes/${sel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ action: 'change_status', status: next })
+      })
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error)
+      alert(`'${label}'가 완료되었으며, 고객에게 안내 메일이 발송되었습니다.`)
+      setSel({ ...sel, status: next } as Quote)
+      refresh()
+    } catch(e:any) { alert('오류: ' + e.message) }
+    finally { setLoading(false) }
+  }
+
   const filtered = quotes.filter(q => filter === 'all' || q.status === filter)
   const counts = {
     pending:  quotes.filter(q=>q.status==='pending').length,
@@ -372,27 +400,44 @@ export default function AdminPage() {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <Info label="견적 번호" value={sel.quote_no} />
           <div style={{ marginBottom:12 }}>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>진행 상태</label>
-            <select value={sel.status}
-              onChange={async (e) => {
-                if (!confirm(`상태를 "${STATUS_LABELS[e.target.value]}"(으)로 변경하시겠습니까?`)) return
-                try {
-                  const res = await fetch(`/api/quotes/${sel.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type':'application/json', 'x-admin-password': password },
-                    body: JSON.stringify({ action: 'change_status', status: e.target.value })
-                  })
-                  const json = await res.json()
-                  if (!json.ok) throw new Error(json.error)
-                  alert('상태가 변경되고 고객에게 이메일이 발송되었습니다.')
-                  refresh()
-                } catch(e:any) { alert('오류: '+e.message) }
-              }}
-              style={{ padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, width:'100%' }}>
-              {Object.entries(STATUS_LABELS).map(([k,v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>다음 단계 처리</label>
+            {sel.status === 'pending' && (
+              <div style={{ fontSize:13, color:'#92400e', background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:8, padding:'9px 12px' }}>
+                아래 <b>관리자 결정</b>에서 금액·납기를 입력해 <b>승인</b>하거나 거절하세요.
+              </div>
+            )}
+            {sel.status === 'shipping_ready' && (
+              <div style={{ fontSize:13, color:'#134e4a', background:'#f0fdfa', border:'1px solid #5eead4', borderRadius:8, padding:'9px 12px' }}>
+                아래 <b>송장번호</b>를 입력하면 발송 완료 처리되고 메일이 발송됩니다.
+              </div>
+            )}
+            {sel.status === 'shipped' && (
+              <div style={{ fontSize:13, color:'#15803d', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'9px 12px' }}>
+                ✓ 모든 단계가 완료되었습니다.
+              </div>
+            )}
+            {sel.status === 'rejected' && (
+              <div style={{ fontSize:13, color:'#7f1d1d', background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:8, padding:'9px 12px' }}>
+                거절 처리된 견적입니다.
+              </div>
+            )}
+            {sel.status === 'issue_reported' && (
+              <div style={{ fontSize:13, color:'#991b1b', background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:8, padding:'9px 12px' }}>
+                문제 상황 처리 중입니다. 아래에서 내용을 관리하세요.
+              </div>
+            )}
+            {NEXT_STEP[sel.status] && (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <button onClick={()=>changeStatus(NEXT_STEP[sel.status].next, NEXT_STEP[sel.status].label)} disabled={loading}
+                  style={{ ...S.btn, background:'#2563eb', color:'#fff', width:'100%', justifyContent:'center' }}>
+                  {loading ? '처리 중...' : `${NEXT_STEP[sel.status].label} →`}
+                </button>
+                <button onClick={()=>changeStatus('issue_reported','문제 상황 접수')} disabled={loading}
+                  style={{ ...S.sBtn, color:'#dc2626', border:'1.5px solid #fca5a5', width:'100%', justifyContent:'center' }}>
+                  ⚠️ 문제 상황 접수
+                </button>
+              </div>
+            )}
           </div>
         </div>
         {sel.status === 'shipping_ready' && (
