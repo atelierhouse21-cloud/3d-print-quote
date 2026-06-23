@@ -189,14 +189,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     // ── 기존 승인/거절 ──
     if (action === 'approve') {
-      const { final_price, final_days } = body
-      const { error: updateErr } = await supabaseAdmin
-        .from('quotes')
-        .update({ status: 'approved', final_price, final_days })
-        .eq('id', params.id)
-      if (updateErr) throw updateErr
+      // 미입력 시 기존 정보로 확정: 금액은 자동 견적가, 납기는 클라이언트가 보낸 예상 납기
+      const finalPrice = (body.final_price !== null && body.final_price !== undefined && body.final_price !== '')
+        ? Number(body.final_price)
+        : (quote.auto_price ?? null)
+      const finalDays = body.final_days || '영업일 기준 협의'
+      const adminNote = body.admin_note ?? null
 
-      console.log('[API] Approved / Price:', final_price, '/ Days:', final_days)
+      // 1) 상태 변경 — status 컬럼은 항상 존재하므로 반드시 성공
+      const { error: statusErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ status: 'approved' })
+        .eq('id', params.id)
+      if (statusErr) throw statusErr
+
+      // 2) 확정 금액/납기/메모 저장 — 해당 컬럼이 없을 수 있으므로 실패해도 진행
+      const { error: extraErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ final_price: finalPrice, final_days: finalDays, admin_note: adminNote })
+        .eq('id', params.id)
+      if (extraErr) console.warn('[API] 확정 부가정보 저장 생략(스키마 컬럼 누락 가능):', extraErr.message)
+
+      console.log('[API] Approved / Price:', finalPrice, '/ Days:', finalDays)
 
       const emailResult = await resend.emails.send({
         from: process.env.FROM_EMAIL!,
@@ -209,8 +223,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             <p style="margin-bottom:20px;">요청하신 견적이 확정되었습니다.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
               <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;">${quote.quote_no}</td></tr>
-              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">확정 금액</td><td style="padding:10px 0;font-weight:700;font-size:18px;color:#15803d;">${krw(final_price)} (VAT 별도)</td></tr>
-              <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;font-weight:600;">${final_days}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">확정 금액</td><td style="padding:10px 0;font-weight:700;font-size:18px;color:#15803d;">${krw(finalPrice)} (VAT 별도)</td></tr>
+              <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;font-weight:600;">${finalDays}</td></tr>
             </table>
             <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
               입금 확인 후 작업을 시작합니다.
