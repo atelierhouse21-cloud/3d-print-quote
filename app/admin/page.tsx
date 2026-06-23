@@ -319,16 +319,28 @@ export default function AdminPage() {
     if (!sel) return
     setLoading(true)
     try {
-      await fetch(`/api/quotes/${sel.id}`, {
+      // 확정 금액/납기 미입력 시 기존 정보(자동 견적가 / 예상 납기)로 확정
+      const finalPrice = aForm.price.trim()
+        ? (parseInt(aForm.price.replace(/\D/g,'')) || null)
+        : (sel.auto_price ?? null)
+      const finalDays = aForm.days.trim() || calcDays(sel.method, sel.qty)
+
+      const res = await fetch(`/api/quotes/${sel.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type':'application/json', 'x-admin-password': password },
         body: JSON.stringify({
           action: status === 'approved' ? 'approve' : 'reject',
-          final_price: aForm.price ? parseInt(aForm.price.replace(/\D/g,'')) : null,
-          final_days: aForm.days || calcDays(sel.method, sel.qty),
+          final_price: finalPrice,
+          final_days: finalDays,
           admin_note: aForm.note,
         }),
       })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) throw new Error(json.error || '처리에 실패했습니다.')
+
+      alert(status === 'approved'
+        ? '견적이 확정되었으며, 고객에게 확정 메일이 발송되었습니다.'
+        : '견적이 거절 처리되었습니다.')
       await refresh(); setSel(null)
     } catch (e: any) { alert('오류: ' + e.message) }
     finally { setLoading(false) }
