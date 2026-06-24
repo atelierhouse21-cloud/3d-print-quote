@@ -61,21 +61,38 @@ async function downloadFile(filePath: string, fileName: string, password: string
   } catch (e: any) { alert('다운로드 오류: ' + e.message) }
 }
 
+// 처리 시각 포맷: YYMMDD_HH:MM:SS (24시간, 한국시간)
+function fmtStageTime(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone:'Asia/Seoul', year:'2-digit', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false,
+  }).formatToParts(d)
+  const g = (t: string) => parts.find(p => p.type === t)?.value || ''
+  return `${g('year')}${g('month')}${g('day')}_${g('hour')}:${g('minute')}:${g('second')}`
+}
+
 // ── 마일스톤 ──
-function Milestone({ status }: { status: string }) {
+function Milestone({ quote }: { quote: Quote }) {
   const steps = [
     { key:'pending', label:'검토중' }, { key:'approved', label:'견적확정' },
     { key:'payment_confirmed', label:'결제확인' }, { key:'printing', label:'출력중' },
     { key:'post_processing', label:'후처리' }, { key:'shipping_ready', label:'배송준비' },
     { key:'shipped', label:'발송완료' },
   ]
-  const currentIdx = steps.findIndex(s => s.key === status)
+  const currentIdx = steps.findIndex(s => s.key === quote.status)
+  const times = quote.stage_times || {}
+  // pending(검토중) 시각은 접수 시각(created_at) 사용
+  const timeFor = (key: string) => key === 'pending' ? quote.created_at : times[key]
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'16px 0', borderBottom:'1px solid #e5e7eb' }}>
+    <div style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'16px 0', borderBottom:'1px solid #e5e7eb' }}>
       {steps.map((step, idx) => {
         const isPast = idx < currentIdx; const isCurrent = idx === currentIdx
+        const t = fmtStageTime(timeFor(step.key))
         return (
-          <div key={step.key} style={{ display:'flex', alignItems:'center', flex:1 }}>
+          <div key={step.key} style={{ display:'flex', alignItems:'flex-start', flex:1 }}>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1 }}>
               <div style={{ width:32, height:32, borderRadius:'50%',
                 background: isCurrent?'#2563eb':isPast?'#10b981':'#e5e7eb',
@@ -86,9 +103,12 @@ function Milestone({ status }: { status: string }) {
               <div style={{ fontSize:11, fontWeight:600, color: isCurrent?'#2563eb':isPast?'#10b981':'#9ca3af' }}>
                 {step.label}
               </div>
+              <div style={{ fontSize:8.5, color:'#9ca3af', marginTop:3, minHeight:11, textAlign:'center', lineHeight:1.25, letterSpacing:'-.2px' }}>
+                {t}
+              </div>
             </div>
             {idx < steps.length-1 && (
-              <div style={{ flex:0.5, height:2, background: isPast?'#10b981':'#e5e7eb', marginBottom:28 }} />
+              <div style={{ flex:0.5, height:2, background: isPast?'#10b981':'#e5e7eb', marginTop:15 }} />
             )}
           </div>
         )
@@ -271,7 +291,7 @@ export default function AdminPage() {
   const [sel, setSel]               = useState<Quote | null>(null)
   const [loading, setLoading]       = useState(false)
   const [aForm, setAForm]           = useState({ price:'', days:'', note:'' })
-  const [filter, setFilter]         = useState<'all'|'pending'|'approved'|'rejected'>('all')
+  const [filter, setFilter]         = useState<'all'|'pending'|'approved'|'rejected'|'deleted'>('all')
   const [tab, setTab]               = useState<'quotes'|'settings'>('quotes')
   const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
@@ -389,17 +409,38 @@ export default function AdminPage() {
       const json = await res.json()
       if (!json.ok) throw new Error(json.error)
       alert(`'${label}'가 완료되었으며, 고객에게 안내 메일이 발송되었습니다.`)
-      setSel({ ...sel, status: next } as Quote)
+      setSel({ ...sel, status: next, stage_times: { ...(sel.stage_times || {}), [next]: new Date().toISOString() } } as Quote)
       refresh()
     } catch(e:any) { alert('오류: ' + e.message) }
     finally { setLoading(false) }
   }
 
-  const filtered = quotes.filter(q => filter === 'all' || q.status === filter)
+  const activeQuotes  = quotes.filter(q => !q.deleted_at)
+  const deletedQuotes = quotes.filter(q => !!q.deleted_at)
+  const filtered = filter === 'deleted'
+    ? deletedQuotes
+    : activeQuotes.filter(q => filter === 'all' || q.status === filter)
   const counts = {
-    pending:  quotes.filter(q=>q.status==='pending').length,
-    approved: quotes.filter(q=>q.status==='approved').length,
-    rejected: quotes.filter(q=>q.status==='rejected').length,
+    pending:  activeQuotes.filter(q=>q.status==='pending').length,
+    approved: activeQuotes.filter(q=>q.status==='approved').length,
+    rejected: activeQuotes.filter(q=>q.status==='rejected').length,
+    deleted:  deletedQuotes.length,
+  }
+
+  // ── 견적 삭제(소프트) ──
+  const handleDelete = async (q: Quote) => {
+    if (!confirm(`${q.quote_no} 견적을 삭제하시겠습니까?\n삭제 후에는 '삭제' 탭에서 요약만 확인할 수 있으며, 업로드된 파일은 제거됩니다.`)) return
+    try {
+      const res = await fetch(`/api/quotes/${q.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ action: 'soft_delete' })
+      })
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error)
+      if (sel?.id === q.id) setSel(null)
+      refresh()
+    } catch(e:any) { alert('삭제 오류: ' + e.message) }
   }
 
   // ── 로그인 화면 ──
@@ -436,7 +477,7 @@ export default function AdminPage() {
         <span style={{ fontSize:13, color:'#9ca3af' }}>{new Date(sel.created_at).toLocaleString('ko-KR')}</span>
       </div>
 
-      {sel.status !== 'rejected' && <Milestone status={sel.status} />}
+      {sel.status !== 'rejected' && <Milestone quote={sel} />}
 
       <Section title="견적 정보" style={{ marginBottom:12 }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -510,7 +551,8 @@ export default function AdminPage() {
                   const json = await res.json()
                   if (!json.ok) throw new Error(json.error)
                   alert('발송 완료 처리되었으며, 고객에게 배송사·송장번호 안내 메일이 발송되었습니다.')
-                  setSel({ ...sel, status: 'shipped' } as Quote)
+                  setSel({ ...sel, status: 'shipped', shipping_company: carrier, tracking_number: trackingNo,
+                    stage_times: { ...(sel.stage_times || {}), shipped: new Date().toISOString() } } as Quote)
                   refresh()
                 } catch(e:any) { alert('오류: '+e.message) }
               }}
@@ -663,55 +705,86 @@ export default function AdminPage() {
         <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
             <div style={{ fontSize:13, color:'#6b7280' }}>
-              전체 {quotes.length}건 &nbsp;·&nbsp;
+              전체 {activeQuotes.length}건 &nbsp;·&nbsp;
               <span style={{ color:'#d97706', fontWeight:600 }}>검토 중 {counts.pending}건</span> &nbsp;·&nbsp;
               <span style={{ color:'#16a34a', fontWeight:600 }}>승인 {counts.approved}건</span> &nbsp;·&nbsp;
-              거절 {counts.rejected}건
+              거절 {counts.rejected}건 &nbsp;·&nbsp;
+              <span style={{ color:'#dc2626', fontWeight:600 }}>삭제 {counts.deleted}건</span>
             </div>
             <button style={S.sBtn} onClick={refresh}>↻ 새로고침</button>
           </div>
 
           <div style={{ display:'flex', gap:4, marginBottom:16, background:'#f3f4f6', padding:3, borderRadius:10, width:'fit-content' }}>
-            {(['all','pending','approved','rejected'] as const).map(f => (
+            {(['all','pending','approved','rejected','deleted'] as const).map(f => (
               <button key={f} onClick={()=>setFilter(f)} style={{
                 padding:'6px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
-                background: filter===f?'#fff':'transparent', color: filter===f?'#1a1a1a':'#6b7280',
+                background: filter===f?'#fff':'transparent',
+                color: filter===f ? (f==='deleted'?'#dc2626':'#1a1a1a') : '#6b7280',
                 boxShadow: filter===f?'0 1px 3px rgba(0,0,0,.1)':'none',
               }}>
-                {f==='all'?'전체':BADGE_LABEL[f]} {f!=='all'&&`(${counts[f]})`}
+                {f==='all'?'전체':f==='deleted'?'🗑 삭제':BADGE_LABEL[f]} {f!=='all'&&`(${counts[f]})`}
               </button>
             ))}
           </div>
 
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {filtered.length === 0 && (
-              <div style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>견적 요청이 없습니다</div>
+              <div style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>
+                {filter==='deleted' ? '삭제된 견적이 없습니다' : '견적 요청이 없습니다'}
+              </div>
             )}
-            {filtered.map(q => (
-              <button key={q.id} onClick={()=>{setSel(q);setAForm({price:'',days:'',note:''})}} style={{
-                display:'flex', alignItems:'center', gap:12, padding:'14px 16px',
-                background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, cursor:'pointer',
-                textAlign:'left', width:'100%', transition:'border-color .15s',
+
+            {/* 활성 견적 — 클릭=상세, 우측=삭제 */}
+            {filter !== 'deleted' && filtered.map(q => (
+              <div key={q.id} style={{
+                display:'flex', alignItems:'center', gap:8, padding:'14px 16px',
+                background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, transition:'border-color .15s',
               }}
               onMouseEnter={e=>(e.currentTarget.style.borderColor='#93c5fd')}
               onMouseLeave={e=>(e.currentTarget.style.borderColor='#e5e7eb')}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
-                    <span style={{ fontWeight:700, fontSize:14 }}>{q.quote_no}</span>
-                    <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
-                      {BADGE_LABEL[q.status]}
-                    </span>
-                    <span style={{ fontSize:11, color:'#9ca3af' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
+                <div onClick={()=>{setSel(q);setAForm({price:'',days:'',note:''})}}
+                  style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                      <span style={{ fontWeight:700, fontSize:14 }}>{q.quote_no}</span>
+                      <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
+                        {BADGE_LABEL[q.status]}
+                      </span>
+                      <span style={{ fontSize:11, color:'#9ca3af' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
+                    </div>
+                    <div style={{ fontSize:13, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {q.file_name} &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} &nbsp;·&nbsp; {q.qty}개
+                    </div>
                   </div>
-                  <div style={{ fontSize:13, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {q.file_name} &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} &nbsp;·&nbsp; {q.qty}개
+                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                    <div style={{ fontSize:15, fontWeight:700 }}>{krw(q.final_price||q.auto_price)}</div>
                   </div>
+                  <span style={{ color:'#9ca3af', fontSize:18 }}>›</span>
                 </div>
-                <div style={{ textAlign:'right', flexShrink:0 }}>
-                  <div style={{ fontSize:15, fontWeight:700 }}>{krw((q as any).final_price||q.auto_price)}</div>
+                <button onClick={()=>handleDelete(q)} title="견적 삭제" style={{
+                  flexShrink:0, background:'#fef2f2', color:'#dc2626', border:'1px solid #fca5a5',
+                  borderRadius:8, width:34, height:34, cursor:'pointer', fontSize:15, lineHeight:1,
+                }}>🗑</button>
+              </div>
+            ))}
+
+            {/* 삭제된 견적 — 요약·읽기전용·파일 제외 */}
+            {filter === 'deleted' && deletedQuotes.map(q => (
+              <div key={q.id} style={{ padding:'12px 16px', background:'#fafafa', border:'1px solid #e5e7eb', borderRadius:12 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
+                  <span style={{ fontWeight:700, fontSize:14, color:'#6b7280' }}>{q.quote_no}</span>
+                  <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
+                    {BADGE_LABEL[q.status]}
+                  </span>
+                  <span style={{ padding:'2px 8px', borderRadius:20, fontSize:11, fontWeight:600, background:'#fef2f2', color:'#dc2626', border:'1px solid #fca5a5' }}>삭제됨</span>
                 </div>
-                <span style={{ color:'#9ca3af', fontSize:18 }}>›</span>
-              </button>
+                <div style={{ fontSize:13, color:'#374151', marginBottom:3 }}>
+                  {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} / {q.material} / {q.color} &nbsp;·&nbsp; {q.qty}개 &nbsp;·&nbsp; {krw(q.final_price||q.auto_price)}
+                </div>
+                <div style={{ fontSize:11, color:'#9ca3af' }}>
+                  접수 {fmtStageTime(q.created_at)} &nbsp;·&nbsp; 삭제 {fmtStageTime(q.deleted_at)} &nbsp;·&nbsp; 파일 제거됨
+                </div>
+              </div>
             ))}
           </div>
         </>
