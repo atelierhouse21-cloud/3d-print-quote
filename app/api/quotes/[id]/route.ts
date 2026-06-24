@@ -127,6 +127,35 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     console.log('[API] Action:', action, '/ Quote:', quote.quote_no)
 
+    // 단계별 처리 시각 기록 (컬럼 없을 수 있어 best-effort)
+    const stampStage = async (statusKey: string) => {
+      const merged = { ...((quote as any).stage_times || {}), [statusKey]: new Date().toISOString() }
+      const { error } = await supabaseAdmin.from('quotes').update({ stage_times: merged }).eq('id', params.id)
+      if (error) console.warn('[API] 단계 시각 저장 생략(stage_times 컬럼 누락 가능):', error.message)
+    }
+
+    // ── 견적 삭제(소프트) ──
+    if (action === 'soft_delete') {
+      // deleted_at 먼저 기록 (필수) — 컬럼 없으면 마이그레이션 안내
+      const { error: delErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', params.id)
+      if (delErr) {
+        return NextResponse.json({
+          ok: false,
+          error: '삭제용 컬럼(deleted_at)이 없습니다. migration2 SQL을 먼저 실행하세요. (' + delErr.message + ')'
+        }, { status: 500 })
+      }
+      // 업로드 파일 제거 (best-effort)
+      if (quote.file_path) {
+        const { error: rmErr } = await supabaseAdmin.storage.from('quote-files').remove([quote.file_path])
+        if (rmErr) console.warn('[API] 파일 삭제 생략:', rmErr.message)
+      }
+      console.log('[API] Soft-deleted:', quote.quote_no)
+      return NextResponse.json({ ok: true })
+    }
+
     // ── 상태 변경 ──
     if (action === 'change_status') {
       const { status } = body
@@ -135,6 +164,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         .update({ status })
         .eq('id', params.id)
       if (updateErr) throw updateErr
+      await stampStage(status)
 
       console.log('[API] Status changed to:', status)
 
@@ -177,6 +207,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         .update({ shipping_company, tracking_number })
         .eq('id', params.id)
       if (extraErr) console.warn('[API] 배송정보 저장 생략(스키마 컬럼 누락 가능):', extraErr.message)
+      await stampStage('shipped')
 
       console.log('[API] Shipped / Company:', shipping_company, '/ Tracking:', tracking_number)
 
@@ -218,6 +249,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         .update({ final_price: finalPrice, final_days: finalDays, admin_note: adminNote })
         .eq('id', params.id)
       if (extraErr) console.warn('[API] 확정 부가정보 저장 생략(스키마 컬럼 누락 가능):', extraErr.message)
+      await stampStage('approved')
 
       console.log('[API] Approved / Price:', finalPrice, '/ Days:', finalDays)
 
@@ -254,6 +286,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         .update({ status: 'rejected' })
         .eq('id', params.id)
       if (updateErr) throw updateErr
+      await stampStage('rejected')
 
       console.log('[API] Rejected')
 
