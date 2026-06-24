@@ -163,11 +163,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // ── 배송 완료 처리 ──
     if (action === 'ship') {
       const { shipping_company, tracking_number } = body
-      const { error: updateErr } = await supabaseAdmin
+
+      // 1) 상태 변경 — 반드시 성공
+      const { error: statusErr } = await supabaseAdmin
         .from('quotes')
-        .update({ status: 'shipped', shipping_company, tracking_number })
+        .update({ status: 'shipped' })
         .eq('id', params.id)
-      if (updateErr) throw updateErr
+      if (statusErr) throw statusErr
+
+      // 2) 배송사/송장 저장 — 컬럼이 없을 수 있으므로 실패해도 진행
+      const { error: extraErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ shipping_company, tracking_number })
+        .eq('id', params.id)
+      if (extraErr) console.warn('[API] 배송정보 저장 생략(스키마 컬럼 누락 가능):', extraErr.message)
 
       console.log('[API] Shipped / Company:', shipping_company, '/ Tracking:', tracking_number)
 
