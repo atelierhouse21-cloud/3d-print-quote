@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { METHODS, MATS, COLS, QUAL, calcPrice, calcDays, krw } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, normalizeSettings, defaultSettings, defaultMethodCfg } from '@/lib/constants'
+import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
 // 화면 폭이 좁아지면 가로 배치를 세로(1열)로 자동 전환한다.
@@ -220,57 +221,48 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 type FileItem = {
   id:string; file:File
   vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null
-  method:string; material:string; color:string; quality:string; qm:number
-  qty:number; infill:number
+  method:string; material:string; density:number; color:string; quality:string; factor:number
+  qty:number; note:string
 }
-type CustomerForm = { name:string; email:string; company:string; phone:string; note:string }
+type CustomerForm = { name:string; email:string; company:string; phone:string }
 
-// ── 설정 기반 옵션 헬퍼 ────────────────────────────────
-type PrintOptions = Record<string, {
-  enabled: boolean
-  colors: string[]
-  materials: string[]
-  qualities: string[]
-}>
-
-function getColors(options: PrintOptions | null, method: string): string[] {
-  if (options?.[method]?.colors?.length) return options[method].colors
-  return COLS[method] || []
+// ── 설정 기반 옵션 헬퍼 (options는 항상 정규화되어 존재) ──
+function getMethodCfg(options: PrintOptions, method: string): MethodCfg {
+  return options[method] || defaultMethodCfg(method)
 }
-function getMaterials(options: PrintOptions | null, method: string): string[] {
-  if (options?.[method]?.materials?.length) return options[method].materials
-  return MATS[method] || []
+function getMaterials(options: PrintOptions, method: string): MaterialCfg[] {
+  const ms = getMethodCfg(options, method).materials
+  return ms.length ? ms : defaultMethodCfg(method).materials
 }
-function getQualities(options: PrintOptions | null, method: string): { v:string; m:number }[] {
-  if (options?.[method]?.qualities?.length) {
-    return options[method].qualities.map((v: string) => {
-      const found = (QUAL[method] || []).find(q => q.v === v)
-      return found || { v, m: 1.0 }
-    })
-  }
-  return QUAL[method] || []
+function getColorsOf(materials: MaterialCfg[], materialName: string): string[] {
+  return materials.find(m => m.name === materialName)?.colors || []
 }
-function getEnabledMethods(options: PrintOptions | null): [string, typeof METHODS[string]][] {
-  if (!options) return Object.entries(METHODS)
-  return Object.entries(METHODS).filter(([k]) => options[k]?.enabled !== false && options[k])
+function getQualities(options: PrintOptions, method: string): QualityCfg[] {
+  const qs = getMethodCfg(options, method).qualities
+  return qs.length ? qs : defaultMethodCfg(method).qualities
+}
+function getEnabledMethods(options: PrintOptions): [string, typeof METHODS[string]][] {
+  return Object.entries(METHODS).filter(([k]) => options[k]?.enabled !== false)
 }
 
 // ── FileItem 초기값 (설정 기반) ───────────────────────
-function newFileItem(file: File, options: PrintOptions | null): FileItem {
+function newFileItem(file: File, options: PrintOptions): FileItem {
   const enabledMethods = getEnabledMethods(options)
   const method = enabledMethods[0]?.[0] || 'FDM'
-  const colors    = getColors(options, method)
   const materials = getMaterials(options, method)
-  const qualities = getQualities(options, method)
+  const mat = materials[0]
+  const colors = mat?.colors || []
+  const quals = getQualities(options, method)
   return {
     id: Math.random().toString(36).slice(2),
     file, vol:null, sizeX:null, sizeY:null, sizeZ:null,
     method,
-    material:  materials[0]  || 'PLA',
-    color:     colors[0]     || 'White',
-    quality:   qualities[0]?.v || 'Standard (0.2mm)',
-    qm:        qualities[0]?.m || 1.0,
-    qty: 1, infill: 20,
+    material: mat?.name || '',
+    density:  mat?.density || 1.0,
+    color:    colors[0] || '',
+    quality:  quals[0]?.name || '',
+    factor:   quals[0]?.factor || 1.0,
+    qty: 1, note: '',
   }
 }
 
@@ -285,32 +277,46 @@ const S: Record<string,React.CSSProperties> = {
   sBtn: {background:'#fff',color:'#374151',border:'1.5px solid #d1d5db',padding:'9px 20px',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer'},
 }
 
+// 단일 옵션(선택 불가)일 때 고정 표시
+function Fixed({ text }: { text: string }) {
+  return <div style={{padding:'9px 11px',border:'1.5px solid #e5e7eb',borderRadius:8,fontSize:12,background:'#f9fafb',color:'#374151'}}>{text || '-'}</div>
+}
+
 // ── 파일 아이템 카드 ──────────────────────────────────
 function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
-  item: FileItem; idx: number; options: PrintOptions | null
+  item: FileItem; idx: number; options: PrintOptions
   onChange: (id:string, key:keyof FileItem, val:any)=>void
   onRemove: (id:string)=>void
   isMobile: boolean
 }) {
+  const cfg            = getMethodCfg(options, item.method)
   const enabledMethods = getEnabledMethods(options)
-  const colors    = getColors(options, item.method)
-  const materials = getMaterials(options, item.method)
-  const qualities = getQualities(options, item.method)
+  const materials      = getMaterials(options, item.method)
+  const colors         = getColorsOf(materials, item.material)
+  const qualities      = getQualities(options, item.method)
 
   // 방식 변경 시 귀속 설정 초기화
   const updMethod = (m: string) => {
-    const newColors    = getColors(options, m)
-    const newMaterials = getMaterials(options, m)
-    const newQualities = getQualities(options, m)
+    const mats  = getMaterials(options, m)
+    const mat   = mats[0]
+    const quals = getQualities(options, m)
     onChange(item.id, 'method',   m)
-    onChange(item.id, 'material', newMaterials[0] || '')
-    onChange(item.id, 'color',    newColors[0]    || '')
-    onChange(item.id, 'quality',  newQualities[0]?.v || '')
-    onChange(item.id, 'qm',       newQualities[0]?.m || 1.0)
+    onChange(item.id, 'material', mat?.name || '')
+    onChange(item.id, 'density',  mat?.density || 1.0)
+    onChange(item.id, 'color',    mat?.colors?.[0] || '')
+    onChange(item.id, 'quality',  quals[0]?.name || '')
+    onChange(item.id, 'factor',   quals[0]?.factor || 1.0)
+  }
+  // 소재 변경 시 밀도·색상 갱신 (색상은 소재에 종속)
+  const updMaterial = (name: string) => {
+    const mat = materials.find(x => x.name === name)
+    onChange(item.id, 'material', name)
+    onChange(item.id, 'density',  mat?.density || 1.0)
+    onChange(item.id, 'color',    mat?.colors?.[0] || '')
   }
 
   const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
-  const price = item.vol ? calcPrice(item.method, item.vol, item.qm, item.qty, item.infill) : 0
+  const price = item.vol ? calcPriceV2(item.vol, item.density, cfg.coefficient, item.qty, item.factor) : 0
 
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
@@ -351,28 +357,34 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
             </div>
           </div>
 
-          {/* 소재 / 색상 / 품질 / 수량 */}
+          {/* 소재 / 색상 / 품질 / 수량 — 옵션이 1개면 고정 표시 */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
             <div style={S.grp}>
               <label style={S.lbl}>소재</label>
-              <select value={item.material} onChange={e=>onChange(item.id,'material',e.target.value)} style={{...S.inp,fontSize:12}}>
-                {materials.map(v=><option key={v}>{v}</option>)}
-              </select>
+              {materials.length>1 ? (
+                <select value={item.material} onChange={e=>updMaterial(e.target.value)} style={{...S.inp,fontSize:12}}>
+                  {materials.map(m=><option key={m.name}>{m.name}</option>)}
+                </select>
+              ) : <Fixed text={item.material} />}
             </div>
             <div style={S.grp}>
               <label style={S.lbl}>색상</label>
-              <select value={item.color} onChange={e=>onChange(item.id,'color',e.target.value)} style={{...S.inp,fontSize:12}}>
-                {colors.map(v=><option key={v}>{v}</option>)}
-              </select>
+              {colors.length>1 ? (
+                <select value={item.color} onChange={e=>onChange(item.id,'color',e.target.value)} style={{...S.inp,fontSize:12}}>
+                  {colors.map(v=><option key={v}>{v}</option>)}
+                </select>
+              ) : <Fixed text={item.color} />}
             </div>
             <div style={S.grp}>
               <label style={S.lbl}>품질</label>
-              <select value={item.quality} onChange={e=>{
-                const q = qualities.find(x=>x.v===e.target.value)
-                onChange(item.id,'quality',e.target.value); onChange(item.id,'qm',q?.m||1.0)
-              }} style={{...S.inp,fontSize:12}}>
-                {qualities.map(q=><option key={q.v}>{q.v}</option>)}
-              </select>
+              {qualities.length>1 ? (
+                <select value={item.quality} onChange={e=>{
+                  const q = qualities.find(x=>x.name===e.target.value)
+                  onChange(item.id,'quality',e.target.value); onChange(item.id,'factor',q?.factor||1.0)
+                }} style={{...S.inp,fontSize:12}}>
+                  {qualities.map(q=><option key={q.name}>{q.name}</option>)}
+                </select>
+              ) : <Fixed text={item.quality} />}
             </div>
             <div style={S.grp}>
               <label style={S.lbl}>수량</label>
@@ -382,18 +394,13 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
             </div>
           </div>
 
-          {/* FDM 충전율 */}
-          {item.method==='FDM'&&(
-            <div style={{marginBottom:10}}>
-              <label style={{...S.lbl,display:'block',marginBottom:5}}>
-                충전율: <span style={{color:'#2563eb',fontWeight:700}}>{item.infill}%</span>
-                <span style={{fontWeight:400,color:'#9ca3af',marginLeft:6,fontSize:10}}>{item.infill<=20?'경량':item.infill<=50?'일반':item.infill<=80?'강도':'솔리드'}</span>
-              </label>
-              <input type="range" min={10} max={100} step={5} value={item.infill}
-                onChange={e=>onChange(item.id,'infill',parseInt(e.target.value))}
-                style={{width:'100%',accentColor:'#2563eb'}}/>
-            </div>
-          )}
+          {/* 파일별 요청 사항 */}
+          <div style={{...S.grp,marginBottom:10}}>
+            <label style={S.lbl}>요청 사항</label>
+            <textarea value={item.note} onChange={e=>onChange(item.id,'note',e.target.value)}
+              placeholder="납기 요청, 특이사항 등을 입력하세요"
+              style={{...S.inp,fontSize:12,minHeight:54,resize:'vertical'}}/>
+          </div>
 
           {/* 예상 금액 */}
           <div style={{background:'#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -410,11 +417,11 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
 export default function Home() {
   const isMobile = useIsMobile()
   const [step, setStep]       = useState(1)
-  const [options, setOptions] = useState<PrintOptions | null>(null)
+  const [options, setOptions] = useState<PrintOptions>(defaultSettings())
   const [optLoaded, setOptLoaded] = useState(false)
   const [done, setDone]       = useState<string|null>(null)
   const [loading, setLoading] = useState(false)
-  const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',note:''})
+  const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:''})
   const [items, setItems]     = useState<FileItem[]>([])
   const [drag, setDrag]       = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -423,16 +430,8 @@ export default function Home() {
   useEffect(() => {
     fetch('/api/settings')
       .then(r => r.json())
-      .then(raw => {
-        // 구버전 포맷 감지 및 변환
-        if (Array.isArray(raw?.methods) || !raw || Object.keys(raw).length === 0) {
-          // 설정이 없거나 구버전 → constants 기본값 사용
-          setOptions(null)
-        } else {
-          setOptions(raw as PrintOptions)
-        }
-      })
-      .catch(() => setOptions(null))   // 오류 시 constants 기본값 fallback
+      .then(raw => setOptions(normalizeSettings(raw)))
+      .catch(() => setOptions(defaultSettings()))
       .finally(() => setOptLoaded(true))
   }, [])
 
@@ -450,24 +449,28 @@ export default function Home() {
   }
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
-  const totalPrice = items.reduce((sum,it)=>sum+(it.vol?calcPrice(it.method,it.vol,it.qm,it.qty,it.infill):0),0)
+  const totalPrice = items.reduce((sum,it)=> sum + (it.vol ? calcPriceV2(it.vol, it.density, getMethodCfg(options,it.method).coefficient, it.qty, it.factor) : 0), 0)
 
   const submit = async () => {
     setLoading(true)
     try {
       const primary = items[0]
-      let finalNote = customer.note
-      if (items.length > 1) {
-        const extraInfo = items.slice(1).map((it,i)=>`[파일${i+2}: ${it.file.name}, ${it.method}, ${it.material}, ${it.qty}개]`).join(' ')
-        finalNote = customer.note + (customer.note?'\n':'') + '추가파일: ' + extraInfo
-      }
+      const primaryPrice = primary.vol
+        ? calcPriceV2(primary.vol, primary.density, getMethodCfg(options,primary.method).coefficient, primary.qty, primary.factor)
+        : null
+      // 파일별 사양 + 요청사항을 하나의 note로 합침
+      const finalNote = items.map((it,i)=>{
+        const base = `[파일${i+1}: ${it.file.name} / ${METHODS[it.method]?.label||it.method} / ${it.material} / ${it.color} / ${it.quality} / ${it.qty}개]`
+        return it.note.trim() ? `${base}\n  └ 요청: ${it.note.trim()}` : base
+      }).join('\n')
+
       const payload = {
         name: customer.name, email: customer.email,
         company: customer.company, phone: customer.phone, note: finalNote,
         method: primary.method, material: primary.material,
         color: primary.color, quality: primary.quality,
-        qty: primary.qty, infill: primary.infill,
-        qm: primary.qm, vol: primary.vol || 0,
+        qty: primary.qty, vol: primary.vol || 0,
+        auto_price: primaryPrice,
         sizeX: primary.sizeX||0, sizeY: primary.sizeY||0, sizeZ: primary.sizeZ||0,
         fileName: primary.file.name,
       }
@@ -518,7 +521,7 @@ export default function Home() {
           담당자 검토 후 <b>1~2 영업일 이내</b> 최종 견적을 안내드립니다.<br/>
           <span style={{fontSize:13,color:'#9ca3af'}}>견적 번호: {done}</span>
         </p>
-        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:'',note:''});setItems([])}}>새 견적 요청</button>
+        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:''});setItems([])}}>새 견적 요청</button>
       </div></div>
     </div>
   )
@@ -583,12 +586,6 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            <div style={{...S.grp,marginBottom:16}}>
-              <label style={S.lbl}>요청 사항</label>
-              <textarea value={customer.note} onChange={e=>updC('note',e.target.value)}
-                placeholder="납기 요청, 표면 처리, 후처리, 특이 사항 등을 입력하세요"
-                style={{...S.inp,minHeight:70,resize:'vertical'}}/>
-            </div>
             {items.length===0&&(
               <div style={{textAlign:'center',padding:'32px 0',color:'#9ca3af',fontSize:13}}>
                 업로드된 파일이 없습니다.
@@ -620,7 +617,6 @@ export default function Home() {
                   <div key={l}><span style={{fontSize:11,color:'#9ca3af'}}>{l}: </span><span style={{fontSize:13,fontWeight:600}}>{v}</span></div>
                 ))}
               </div>
-              {customer.note&&<div style={{marginTop:6,fontSize:12,color:'#6b7280'}}>요청사항: {customer.note}</div>}
             </div>
 
             {items.map((item,idx)=>(
@@ -630,11 +626,11 @@ export default function Home() {
                     <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
                     <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
                   </div>
-                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPrice(item.method,item.vol,item.qm,item.qty,item.infill)):'담당자 산출'}</span>
+                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPriceV2(item.vol,item.density,getMethodCfg(options,item.method).coefficient,item.qty,item.factor)):'담당자 산출'}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
-                    ['품질',item.quality],...(item.method==='FDM'?[['충전율',item.infill+'%']]:[] as [string,string][]),
+                    ['품질',item.quality],
                     ...(item.sizeX!=null?[['크기',`${item.sizeX}×${item.sizeY}×${item.sizeZ}mm`]]:[] as [string,string][]),
                     ...(item.vol!=null?[['부피',item.vol+'㎤']]:[] as [string,string][]),
                   ].map(([l,v])=>(
@@ -644,6 +640,7 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
+                {item.note.trim()&&<div style={{marginTop:8,fontSize:12,color:'#6b7280'}}>요청사항: {item.note}</div>}
                 <div style={{marginTop:8,fontSize:12,color:'#6b7280'}}>예상 납기: <b>{calcDays(item.method,item.qty)}</b> (영업일 기준)</div>
               </div>
             ))}
