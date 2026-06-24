@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
 
     // 견적 번호 먼저 생성 (파일명에 사용)
     const quote_no  = await getNextQuoteNo()
-    const auto_price = vol > 0 ? calcPrice(method, vol, qm, qty, infill) : null
+    // 새 가격식(v2)으로 클라이언트가 계산한 값을 우선 사용, 없으면 구식 계산으로 폴백
+    const clientAutoPrice = (body.auto_price !== null && body.auto_price !== undefined && body.auto_price !== '')
+      ? Number(body.auto_price) : null
+    const auto_price = clientAutoPrice != null
+      ? clientAutoPrice
+      : (vol > 0 ? calcPrice(method, vol, qm, qty, infill) : null)
 
     // 파일 경로 생성 (실제 업로드는 브라우저에서 직접 처리)
     let file_path: string | null = null
