@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { METHODS, MATS, COLS, QUAL, krw, calcDays } from '@/lib/constants'
-import type { Quote } from '@/lib/constants'
+import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY } from '@/lib/constants'
+import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 const S: Record<string, React.CSSProperties> = {
   wrap: { maxWidth:900, margin:'0 auto', padding:'24px 16px 60px' },
@@ -47,37 +47,7 @@ const NEXT_STEP: Record<string, { next: string; label: string }> = {
   post_processing:   { next: 'shipping_ready',    label: '배송 준비 완료 처리' },
 }
 
-// ── 설정 정규화: 구버전(methods 배열) → 신버전(방식별 객체) 변환 ──
-function normalizeSettings(data: any) {
-  const ALL_METHODS = ['FDM', 'SLA', 'SLS', 'MJF']
-
-  // 구버전 포맷 감지
-  if (Array.isArray(data?.methods) || Array.isArray(data?.qualities)) {
-    const enabled = data.methods || ALL_METHODS
-    const result: any = {}
-    for (const m of ALL_METHODS) {
-      result[m] = {
-        enabled: enabled.includes(m),
-        colors:    [...(COLS[m] || [])],
-        materials: [...(MATS[m] || [])],
-        qualities: (QUAL[m] || []).map((q: any) => q.v),
-      }
-    }
-    return result
-  }
-
-  // 신버전 포맷 — 누락된 방식 보완
-  const result: any = {}
-  for (const m of ALL_METHODS) {
-    result[m] = {
-      enabled:   data[m]?.enabled !== false,
-      colors:    data[m]?.colors    || [...(COLS[m] || [])],
-      materials: data[m]?.materials || [...(MATS[m] || [])],
-      qualities: data[m]?.qualities || (QUAL[m] || []).map((q: any) => q.v),
-    }
-  }
-  return result
-}
+// ── 설정 정규화는 lib/constants의 공용 normalizeSettings 사용 ──
 
 // ── Supabase 파일 다운로드 ──
 async function downloadFile(filePath: string, fileName: string, password: string) {
@@ -127,21 +97,56 @@ function Milestone({ status }: { status: string }) {
   )
 }
 
-// ── 방식별 설정 카드 ──
+// ── 방식별 설정 카드 (v2: 단가계수 / 소재별 밀도·색상 / 품질별 보정값) ──
 function MethodSettingCard({
   method, cfg, onChange
 }: {
   method: string
-  cfg: { enabled: boolean; colors: string[]; materials: string[]; qualities: string[] }
-  onChange: (method: string, cfg: any) => void
+  cfg: MethodCfg
+  onChange: (method: string, cfg: MethodCfg) => void
 }) {
   const m = METHODS[method]
-  const allColors    = COLS[method]  || []
-  const allMaterials = MATS[method]  || []
-  const allQualities = (QUAL[method] || []).map(q => q.v)
+  const [newMat, setNewMat]   = useState('')
+  const [newQual, setNewQual] = useState('')
+  const [newColorFor, setNewColorFor] = useState<Record<number, string>>({})
 
-  const toggle = (arr: string[], val: string) =>
-    arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val]
+  const inpS:  React.CSSProperties = { padding:'6px 8px', border:'1.5px solid #d1d5db', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' }
+  const delBtn: React.CSSProperties = { background:'#fef2f2', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:13, flexShrink:0, lineHeight:1 }
+  const addBtn: React.CSSProperties = { background:'#2563eb', color:'#fff', border:'none', borderRadius:6, padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, flexShrink:0 }
+  const secTitle: React.CSSProperties = { fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase' as const, letterSpacing:'.4px', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #e5e7eb' }
+
+  const setMaterials = (materials: MaterialCfg[]) => onChange(method, { ...cfg, materials })
+  const setQualities = (qualities: QualityCfg[]) => onChange(method, { ...cfg, qualities })
+
+  const addMat = () => {
+    const n = newMat.trim(); if (!n) return
+    if (cfg.materials.some(x => x.name === n)) { alert('이미 있는 소재입니다.'); return }
+    setMaterials([...cfg.materials, { name:n, density: DEFAULT_DENSITY[n] ?? 1.0, colors: [] }]); setNewMat('')
+  }
+  const removeMat = (i: number) => setMaterials(cfg.materials.filter((_, idx) => idx !== i))
+  const updMatName = (i: number, name: string) => setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, name } : x))
+  const updMatDensity = (i: number, val: string) => {
+    const v = parseFloat(val); setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, density: isNaN(v) ? 0 : v } : x))
+  }
+  const addColor = (i: number) => {
+    const c = (newColorFor[i] || '').trim(); if (!c) return
+    if (cfg.materials[i].colors.includes(c)) { alert('이미 있는 색상입니다.'); return }
+    setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, colors:[...x.colors, c] } : x))
+    setNewColorFor(p => ({ ...p, [i]: '' }))
+  }
+  const removeColor = (i: number, c: string) =>
+    setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, colors: x.colors.filter(v => v !== c) } : x))
+
+  const addQual = () => {
+    const n = newQual.trim(); if (!n) return
+    if (cfg.qualities.some(q => q.name === n)) { alert('이미 있는 품질입니다.'); return }
+    setQualities([...cfg.qualities, { name:n, factor:1.0 }]); setNewQual('')
+  }
+  const removeQual = (i: number) => setQualities(cfg.qualities.filter((_, idx) => idx !== i))
+  const updQualName = (i: number, name: string) => setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, name } : q))
+  const updQualFactor = (i: number, val: string) => {
+    const v = parseFloat(val); setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, factor: isNaN(v) ? 0 : v } : q))
+  }
 
   return (
     <div style={{
@@ -151,8 +156,7 @@ function MethodSettingCard({
     }}>
       {/* 헤더 */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '12px 18px',
+        display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 18px',
         background: cfg.enabled ? '#eff6ff' : '#f9fafb',
         borderBottom: `1px solid ${cfg.enabled ? '#bfdbfe' : '#e5e7eb'}`
       }}>
@@ -160,83 +164,99 @@ function MethodSettingCard({
           <span style={{ fontSize:16, fontWeight:700, color: cfg.enabled?'#2563eb':'#9ca3af' }}>{m.label}</span>
           <span style={{ fontSize:12, color:'#6b7280', marginLeft:8 }}>{m.sub}</span>
         </div>
-        {/* 토글 스위치 */}
         <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
           <span style={{ fontSize:12, color:'#6b7280' }}>{cfg.enabled ? '활성' : '비활성'}</span>
-          <div
-            onClick={() => onChange(method, { ...cfg, enabled: !cfg.enabled })}
-            style={{
-              width:44, height:24, borderRadius:12, cursor:'pointer',
-              background: cfg.enabled ? '#2563eb' : '#d1d5db',
-              position:'relative', transition:'background .2s'
-            }}>
-            <div style={{
-              position:'absolute', top:3, left: cfg.enabled ? 23 : 3,
-              width:18, height:18, borderRadius:'50%', background:'#fff',
-              transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,.2)'
-            }}/>
+          <div onClick={() => onChange(method, { ...cfg, enabled: !cfg.enabled })}
+            style={{ width:44, height:24, borderRadius:12, cursor:'pointer',
+              background: cfg.enabled ? '#2563eb' : '#d1d5db', position:'relative', transition:'background .2s' }}>
+            <div style={{ position:'absolute', top:3, left: cfg.enabled ? 23 : 3, width:18, height:18,
+              borderRadius:'50%', background:'#fff', transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,.2)' }}/>
           </div>
         </label>
       </div>
 
-      {/* 세부 설정 */}
       {cfg.enabled && (
-        <div style={{ padding:'16px 18px', display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:20 }}>
-
-          {/* 색상 */}
-          <div>
-            <div style={{ fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase' as const,
-              letterSpacing:'.4px', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #e5e7eb' }}>
-              🎨 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.colors.length}/{allColors.length})</span>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {allColors.map(c => (
-                <label key={c} style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer', fontSize:13 }}>
-                  <input type="checkbox" checked={cfg.colors.includes(c)}
-                    onChange={() => onChange(method, { ...cfg, colors: toggle(cfg.colors, c) })}
-                    style={{ width:15, height:15, cursor:'pointer', accentColor:'#2563eb' }} />
-                  {c}
-                </label>
-              ))}
+        <div style={{ padding:'16px 18px' }}>
+          {/* 단가 계수 */}
+          <div style={{ marginBottom:18 }}>
+            <div style={secTitle}>💰 단가 계수 (관리자 설정 값)</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <input type="number" step="1" min={0} value={cfg.coefficient}
+                onChange={e => onChange(method, { ...cfg, coefficient: parseFloat(e.target.value) || 0 })}
+                style={{ ...inpS, width:120, fontWeight:700 }} />
+              <span style={{ fontSize:12, color:'#6b7280' }}>
+                예상금액 = 부피 × 밀도 × <b>단가계수</b> × 수량 × 품질보정값
+              </span>
             </div>
           </div>
 
-          {/* 소재 */}
-          <div>
-            <div style={{ fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase' as const,
-              letterSpacing:'.4px', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #e5e7eb' }}>
-              🧱 소재 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length}/{allMaterials.length})</span>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {allMaterials.map(mat => (
-                <label key={mat} style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer', fontSize:13 }}>
-                  <input type="checkbox" checked={cfg.materials.includes(mat)}
-                    onChange={() => onChange(method, { ...cfg, materials: toggle(cfg.materials, mat) })}
-                    style={{ width:15, height:15, cursor:'pointer', accentColor:'#2563eb' }} />
-                  {mat}
-                </label>
-              ))}
+          {/* 소재 & 색상 */}
+          <div style={{ marginBottom:18 }}>
+            <div style={secTitle}>🧱 소재 &amp; 밀도 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
+            {cfg.materials.map((mat, i) => (
+              <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#fff' }}>
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                  <input value={mat.name} onChange={e => updMatName(i, e.target.value)} placeholder="소재명"
+                    style={{ ...inpS, flex:1, minWidth:0, fontWeight:600 }} />
+                  <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                    <span style={{ fontSize:11, color:'#6b7280' }}>밀도</span>
+                    <input type="number" step="0.01" min={0} value={mat.density}
+                      onChange={e => updMatDensity(i, e.target.value)} style={{ ...inpS, width:64 }} />
+                  </div>
+                  <button onClick={() => removeMat(i)} title="소재 삭제" style={delBtn}>✕</button>
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
+                  <span style={{ fontSize:11, color:'#9ca3af', fontWeight:700 }}>색상:</span>
+                  {mat.colors.map(c => (
+                    <span key={c} style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#eff6ff',
+                      border:'1px solid #bfdbfe', borderRadius:6, padding:'3px 8px', fontSize:12 }}>
+                      {c}
+                      <span onClick={() => removeColor(i, c)} style={{ cursor:'pointer', color:'#9ca3af', fontWeight:700 }}>✕</span>
+                    </span>
+                  ))}
+                  {mat.colors.length === 0 && <span style={{ fontSize:11, color:'#dc2626' }}>색상을 1개 이상 추가하세요</span>}
+                  <span style={{ display:'inline-flex', gap:4, alignItems:'center' }}>
+                    <input value={newColorFor[i] || ''} onChange={e => setNewColorFor(p => ({ ...p, [i]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addColor(i) } }}
+                      placeholder="색상 추가" style={{ ...inpS, width:96, padding:'4px 7px' }} />
+                    <button onClick={() => addColor(i)} style={{ ...addBtn, padding:'5px 10px' }}>+</button>
+                  </span>
+                </div>
+              </div>
+            ))}
+            <div style={{ display:'flex', gap:6, marginTop:4 }}>
+              <input value={newMat} onChange={e => setNewMat(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMat() } }}
+                placeholder="새 소재명 입력 (예: PLA)" style={{ ...inpS, flex:1 }} />
+              <button onClick={addMat} style={addBtn}>+ 소재 추가</button>
             </div>
           </div>
 
-          {/* 품질 */}
+          {/* 품질 & 보정값 */}
           <div>
-            <div style={{ fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase' as const,
-              letterSpacing:'.4px', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #e5e7eb' }}>
-              ⚙️ 품질 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length}/{allQualities.length})</span>
+            <div style={secTitle}>⚙️ 품질 &amp; 보정값 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
+            {cfg.qualities.map((q, i) => (
+              <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                <input value={q.name} onChange={e => updQualName(i, e.target.value)} placeholder="품질명"
+                  style={{ ...inpS, flex:1, minWidth:0 }} />
+                <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                  <span style={{ fontSize:11, color:'#6b7280' }}>보정값</span>
+                  <input type="number" step="0.1" min={0} value={q.factor}
+                    onChange={e => updQualFactor(i, e.target.value)} style={{ ...inpS, width:64 }} />
+                </div>
+                <button onClick={() => removeQual(i)} title="품질 삭제" style={delBtn}>✕</button>
+              </div>
+            ))}
+            <div style={{ display:'flex', gap:6, marginTop:4 }}>
+              <input value={newQual} onChange={e => setNewQual(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addQual() } }}
+                placeholder="새 품질명 입력 (예: 표준 0.2mm)" style={{ ...inpS, flex:1 }} />
+              <button onClick={addQual} style={addBtn}>+ 품질 추가</button>
             </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {allQualities.map(q => (
-                <label key={q} style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer', fontSize:13 }}>
-                  <input type="checkbox" checked={cfg.qualities.includes(q)}
-                    onChange={() => onChange(method, { ...cfg, qualities: toggle(cfg.qualities, q) })}
-                    style={{ width:15, height:15, cursor:'pointer', accentColor:'#2563eb' }} />
-                  {q}
-                </label>
-              ))}
-            </div>
+            <p style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>
+              보정값 1.0 = 기본가, 1.5 = 1.5배, 0.8 = 20% 할인. 품질이 1개면 고객은 선택 없이 자동 적용됩니다.
+            </p>
           </div>
-
         </div>
       )}
     </div>
@@ -253,7 +273,7 @@ export default function AdminPage() {
   const [aForm, setAForm]           = useState({ price:'', days:'', note:'' })
   const [filter, setFilter]         = useState<'all'|'pending'|'approved'|'rejected'>('all')
   const [tab, setTab]               = useState<'quotes'|'settings'>('quotes')
-  const [editSettings, setEditSettings] = useState<any>(null)
+  const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
 
   const fetchQuotes = async (pw: string) => {
@@ -285,12 +305,22 @@ export default function AdminPage() {
   }
 
   const saveSettings = async () => {
-    // 검증: 활성 방식 중 각 항목이 최소 1개 이상
-    for (const [method, cfg] of Object.entries(editSettings) as [string, any][]) {
+    if (!editSettings) return
+    // 검증: 활성 방식별로 단가계수·소재·색상·품질 확인
+    for (const [method, cfg] of Object.entries(editSettings) as [string, MethodCfg][]) {
       if (!cfg.enabled) continue
-      if (!cfg.colors.length)    { alert(`${method}: 색상을 최소 1개 선택하세요.`);    return }
-      if (!cfg.materials.length) { alert(`${method}: 소재를 최소 1개 선택하세요.`);    return }
-      if (!cfg.qualities.length) { alert(`${method}: 품질을 최소 1개 선택하세요.`);    return }
+      if (!cfg.coefficient || cfg.coefficient <= 0) { alert(`${method}: 단가 계수를 0보다 크게 입력하세요.`); return }
+      if (!cfg.materials.length) { alert(`${method}: 소재를 최소 1개 추가하세요.`); return }
+      for (const mat of cfg.materials) {
+        if (!mat.name.trim())      { alert(`${method}: 소재명을 입력하세요.`); return }
+        if (!mat.density || mat.density <= 0) { alert(`${method} · ${mat.name}: 밀도를 0보다 크게 입력하세요.`); return }
+        if (!mat.colors.length)    { alert(`${method} · ${mat.name}: 색상을 최소 1개 추가하세요.`); return }
+      }
+      if (!cfg.qualities.length) { alert(`${method}: 품질을 최소 1개 추가하세요.`); return }
+      for (const q of cfg.qualities) {
+        if (!q.name.trim())        { alert(`${method}: 품질명을 입력하세요.`); return }
+        if (!q.factor || q.factor <= 0) { alert(`${method} · ${q.name}: 보정값을 0보다 크게 입력하세요.`); return }
+      }
     }
     const activeCount = Object.values(editSettings).filter((c: any) => c.enabled).length
     if (activeCount === 0) { alert('최소 1개의 출력 방식을 활성화해야 합니다.'); return }
@@ -311,8 +341,8 @@ export default function AdminPage() {
     finally { setSavingSettings(false) }
   }
 
-  const updateMethodCfg = (method: string, cfg: any) => {
-    setEditSettings((prev: any) => ({ ...prev, [method]: cfg }))
+  const updateMethodCfg = (method: string, cfg: MethodCfg) => {
+    setEditSettings((prev) => prev ? ({ ...prev, [method]: cfg }) : prev)
   }
 
   const decide = async (status: 'approved'|'rejected') => {
@@ -454,25 +484,33 @@ export default function AdminPage() {
         </div>
         {sel.status === 'shipping_ready' && (
           <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>송장번호</label>
-            <div style={{ display:'flex', gap:8 }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>배송사 / 송장번호</label>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <select id={`carrier-${sel.id}`} defaultValue={(sel as any).shipping_company || COURIERS[0]}
+                style={{ padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, minWidth:140 }}>
+                {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
               <input type="text" placeholder="송장번호 입력" defaultValue={(sel as any).tracking_number || ''}
                 id={`tracking-${sel.id}`}
-                style={{ flex:1, padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }} />
+                style={{ flex:1, minWidth:140, padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }} />
               <button onClick={async () => {
-                const input = document.getElementById(`tracking-${sel.id}`) as HTMLInputElement
+                const carrierEl  = document.getElementById(`carrier-${sel.id}`) as HTMLSelectElement
+                const input      = document.getElementById(`tracking-${sel.id}`) as HTMLInputElement
+                const carrier    = carrierEl?.value || ''
                 const trackingNo = input?.value.trim()
-                if (!trackingNo) { alert('송장번호를 입력하세요'); return }
-                if (!confirm('발송 완료 처리하시겠습니까?')) return
+                if (!carrier)    { alert('배송사를 선택하세요'); return }
+                if (!trackingNo && carrier !== '직접 수령') { alert('송장번호를 입력하세요'); return }
+                if (!confirm(`'${carrier}' / ${trackingNo || '(송장 없음)'} 으로 발송 완료 처리하시겠습니까?`)) return
                 try {
                   const res = await fetch(`/api/quotes/${sel.id}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type':'application/json', 'x-admin-password': password },
-                    body: JSON.stringify({ action: 'ship', tracking_number: trackingNo })
+                    body: JSON.stringify({ action: 'ship', shipping_company: carrier, tracking_number: trackingNo })
                   })
                   const json = await res.json()
                   if (!json.ok) throw new Error(json.error)
-                  alert('발송 완료 처리되었습니다.')
+                  alert('발송 완료 처리되었으며, 고객에게 배송사·송장번호 안내 메일이 발송되었습니다.')
+                  setSel({ ...sel, status: 'shipped' } as Quote)
                   refresh()
                 } catch(e:any) { alert('오류: '+e.message) }
               }}
@@ -519,7 +557,6 @@ export default function AdminPage() {
           <Info label="품질"     value={sel.quality} />
           <Info label="수량"     value={`${sel.qty}개`} />
           <Info label="자동 견적가" value={krw(sel.auto_price)||'-'} bold />
-          {sel.infill && <Info label="충전율" value={`${sel.infill}%`} />}
         </div>
         {sel.note && (
           <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
@@ -691,7 +728,7 @@ export default function AdminPage() {
                 <div>
                   <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>출력 방식별 옵션 설정</h2>
                   <p style={{ fontSize:13, color:'#6b7280', marginTop:4 }}>
-                    각 출력 방식의 활성 여부와 색상·소재·품질을 개별 설정합니다.
+                    방식별 단가 계수, 소재별 밀도·색상, 품질별 보정값을 직접 추가/삭제합니다.
                   </p>
                 </div>
                 <button onClick={saveSettings} disabled={savingSettings} style={{
