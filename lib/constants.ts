@@ -75,6 +75,10 @@ export type Quote = {
   issue_note?: string
   stage_times?: Record<string, string>
   deleted_at?: string | null
+  as_origin?: {
+    quote_no?: string; shipping_company?: string; tracking_number?: string
+    final_price?: number; final_days?: string; shipped_at?: string
+  } | null
   status: 'pending' | 'approved' | 'rejected' | 'payment_confirmed' | 'printing' | 'post_processing' | 'shipping_ready' | 'shipped' | 'issue_reported'
   created_at: string
 }
