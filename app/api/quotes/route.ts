@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     const email    = body.email as string
     const company  = body.company as string
     const phone    = body.phone as string
+    const address  = (body.address as string) || ''
     const note     = body.note as string
     const method   = body.method as string
     const material = body.material as string
@@ -90,9 +91,10 @@ export async function POST(req: NextRequest) {
         .update({
           privacy_consent: body.privacy_consent === true,
           marketing_consent: body.marketing_consent === true,
+          address,
         })
         .eq('id', data.id)
-      if (consentErr) console.warn('[API] 동의값 저장 생략(컬럼 누락 가능):', consentErr.message)
+      if (consentErr) console.warn('[API] 동의/주소 저장 생략(컬럼 누락 가능):', consentErr.message)
     }
 
     // ── 고객 접수 확인 이메일 ──────────────────────────
@@ -109,7 +111,7 @@ export async function POST(req: NextRequest) {
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <div style="margin-bottom:24px;">
-            <h2 style="font-size:20px;margin:0 0 6px;color:#1a1a1a;">🖨️ 견적 요청 접수 확인</h2>
+            <h2 style="font-size:20px;margin:0 0 6px;color:#1a1a1a;">견적 요청 접수 확인</h2>
             <p style="color:#6b7280;margin:0;font-size:14px;">안녕하세요 <b>${name}</b>님, 견적 요청이 정상적으로 접수되었습니다.</p>
           </div>
           <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
@@ -141,7 +143,7 @@ export async function POST(req: NextRequest) {
       subject: `[새 견적 ${quote_no}] ${name} — ${method} ${qty}개`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:18px;margin:0 0 20px;color:#1a1a1a;">📋 새 견적 요청이 접수되었습니다</h2>
+          <h2 style="font-size:18px;margin:0 0 20px;color:#1a1a1a;">새 견적 요청이 접수되었습니다</h2>
           <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
             <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;color:#2563eb;">${quote_no}</td></tr>
             <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">고객명</td><td style="padding:10px 0;font-weight:600;">${name} (${company || '개인'})</td></tr>
@@ -155,7 +157,7 @@ export async function POST(req: NextRequest) {
             ${note ? `<tr><td style="padding:10px 0;color:#6b7280;">요청 사항</td><td style="padding:10px 0;">${note}</td></tr>` : ''}
           </table>
           <a href="${siteUrl}/admin" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
-            👉 관리자 페이지에서 확인하기
+            관리자 페이지에서 확인하기
           </a>
         </div>
       `,
