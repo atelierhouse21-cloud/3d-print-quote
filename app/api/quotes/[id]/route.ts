@@ -12,7 +12,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       subject: `[${quote.quote_no}] 결제가 확인되었습니다`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">💳 결제 확인 완료</h2>
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">결제 확인 완료</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
           <p style="margin-bottom:20px;">결제가 정상적으로 확인되었습니다. 곧 작업을 시작하겠습니다.</p>
           <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px 16px;font-size:13px;color:#14532d;">
@@ -26,7 +26,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       subject: `[${quote.quote_no}] 3D 출력 작업이 시작되었습니다`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">🖨️ 출력 작업 진행 중</h2>
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">출력 작업 진행 중</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
           <p style="margin-bottom:20px;">3D 프린팅 출력 작업이 진행 중입니다.</p>
           <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:12px 16px;font-size:13px;color:#1e40af;">
@@ -41,7 +41,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       subject: `[${quote.quote_no}] 출력 완료 - 후처리 진행 중`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">✨ 후처리 작업 중</h2>
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">후처리 작업 중</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
           <p style="margin-bottom:20px;">3D 출력이 완료되었습니다. 현재 표면 처리 및 마감 작업을 진행하고 있습니다.</p>
           <div style="background:#fef3f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;font-size:13px;color:#991b1b;">
@@ -55,7 +55,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       subject: `[${quote.quote_no}] 작업 완료 - 배송 준비 중`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">📦 배송 준비 중</h2>
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">배송 준비 중</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
           <p style="margin-bottom:20px;">모든 작업이 완료되었습니다. 현재 배송 준비 중이며, 발송 후 송장번호를 안내드리겠습니다.</p>
           <div style="background:#f0fdfa;border:1px solid #5eead4;border-radius:8px;padding:12px 16px;font-size:13px;color:#134e4a;">
@@ -69,7 +69,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       subject: `[${quote.quote_no}] 문제 상황이 접수되었습니다`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">⚠️ 문제 상황 접수</h2>
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">문제 상황 접수</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
           <p style="margin-bottom:20px;">주문하신 제품에 문제가 발생하여 확인 중입니다. 빠른 시일 내에 해결 방안을 안내드리겠습니다.</p>
           <div style="background:#fef2f2;border:2px solid #ef4444;border-radius:8px;padding:16px;font-size:14px;color:#991b1b;">
@@ -85,7 +85,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       subject: `[${quote.quote_no}] 발송이 완료되었습니다`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">🚚 발송 완료</h2>
+          <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">발송 완료</h2>
           <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
           <p style="margin-bottom:20px;">제품 발송이 완료되었습니다. 아래 정보로 배송 조회가 가능합니다.</p>
           <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;padding:16px;font-size:14px;color:#14532d;">
@@ -263,7 +263,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         subject: `[${quote.quote_no}] 견적이 확정되었습니다`,
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
-            <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">✅ 견적 확정 안내</h2>
+            <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">견적 확정 안내</h2>
             <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
             <p style="margin-bottom:20px;">요청하신 견적이 확정되었습니다.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
