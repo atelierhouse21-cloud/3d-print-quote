@@ -295,6 +295,9 @@ export default function AdminPage() {
   const [tab, setTab]               = useState<'quotes'|'settings'>('quotes')
   const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [showIssueForm, setShowIssueForm] = useState(false)
+  const [issueDraft, setIssueDraft]     = useState('')
+  const [selectedIds, setSelectedIds]   = useState<string[]>([])
 
   const fetchQuotes = async (pw: string) => {
     const res = await fetch('/api/quotes', { headers: { 'x-admin-password': pw } })
@@ -427,20 +430,72 @@ export default function AdminPage() {
     deleted:  deletedQuotes.length,
   }
 
-  // ── 견적 삭제(소프트) ──
-  const handleDelete = async (q: Quote) => {
-    if (!confirm(`${q.quote_no} 견적을 삭제하시겠습니까?\n삭제 후에는 '삭제' 탭에서 요약만 확인할 수 있으며, 업로드된 파일은 제거됩니다.`)) return
+  // ── 선택 삭제(소프트) ──
+  const toggleSelect = (id: string) =>
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
+  const bulkDelete = async () => {
+    if (selectedIds.length === 0) { alert('삭제할 견적을 선택하세요.'); return }
+    if (!confirm(`선택한 ${selectedIds.length}건을 삭제하시겠습니까?\n삭제 후에는 '삭제' 탭에서 요약만 확인할 수 있으며, 업로드된 파일은 제거됩니다.`)) return
+    setLoading(true)
     try {
-      const res = await fetch(`/api/quotes/${q.id}`, {
+      for (const id of selectedIds) {
+        const res = await fetch(`/api/quotes/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+          body: JSON.stringify({ action: 'soft_delete' })
+        })
+        const json = await res.json()
+        if (!json.ok) throw new Error(json.error)
+      }
+      if (sel && selectedIds.includes(sel.id)) setSel(null)
+      setSelectedIds([])
+      await refresh()
+    } catch(e:any) { alert('삭제 오류: ' + e.message) }
+    finally { setLoading(false) }
+  }
+
+  // ── 문제 상황 접수 (내용 작성) ──
+  const submitIssue = async () => {
+    if (!sel) return
+    const text = issueDraft.trim()
+    if (!text) { alert('문제 상황 내용을 입력하세요.'); return }
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/quotes/${sel.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type':'application/json', 'x-admin-password': password },
-        body: JSON.stringify({ action: 'soft_delete' })
+        body: JSON.stringify({ action: 'report_issue', issue_note: text })
       })
       const json = await res.json()
       if (!json.ok) throw new Error(json.error)
-      if (sel?.id === q.id) setSel(null)
+      alert('문제 상황이 접수되었으며, 고객에게 내용이 포함된 안내 메일이 발송되었습니다.')
+      setSel({ ...sel, status: 'issue_reported', issue_note: text,
+        stage_times: { ...(sel.stage_times || {}), issue_reported: new Date().toISOString() } } as Quote)
+      setShowIssueForm(false); setIssueDraft('')
       refresh()
-    } catch(e:any) { alert('삭제 오류: ' + e.message) }
+    } catch(e:any) { alert('오류: ' + e.message) }
+    finally { setLoading(false) }
+  }
+
+  // ── A/S 접수: 동일 내용 새 견적 생성 ──
+  const createAS = async () => {
+    if (!sel) return
+    if (!confirm(`${sel.quote_no} 건에 대한 A/S 견적을 새로 생성하시겠습니까?\n동일 내용의 '검토 중' 견적이 만들어집니다.`)) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/quotes/${sel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ action: 'create_as' })
+      })
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error)
+      alert(`A/S 견적 ${json.quote_no} 이(가) '검토 중' 상태로 생성되었습니다.`)
+      setSel(null)
+      await refresh()
+    } catch(e:any) { alert('오류: ' + e.message) }
+    finally { setLoading(false) }
   }
 
   // ── 로그인 화면 ──
@@ -468,7 +523,7 @@ export default function AdminPage() {
   // ── 상세 화면 ──
   if (sel) return (
     <div style={S.wrap}>
-      <button style={{ ...S.sBtn, marginBottom:20 }} onClick={()=>setSel(null)}>← 목록으로</button>
+      <button style={{ ...S.sBtn, marginBottom:20 }} onClick={()=>{ setSel(null); setShowIssueForm(false) }}>← 목록으로</button>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
         <span style={{ fontSize:18, fontWeight:700 }}>{sel.quote_no}</span>
         <span style={{ padding:'3px 12px', borderRadius:20, fontSize:12, fontWeight:600, ...BADGE[sel.status] }}>
@@ -495,8 +550,14 @@ export default function AdminPage() {
               </div>
             )}
             {sel.status === 'shipped' && (
-              <div style={{ fontSize:13, color:'#15803d', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'9px 12px' }}>
-                ✓ 모든 단계가 완료되었습니다.
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <div style={{ fontSize:13, color:'#15803d', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'9px 12px' }}>
+                  ✓ 모든 단계가 완료되었습니다.
+                </div>
+                <button onClick={createAS} disabled={loading}
+                  style={{ ...S.sBtn, color:'#b45309', border:'1.5px solid #fcd34d', background:'#fffbeb', width:'100%', justifyContent:'center' }}>
+                  🛠 A/S 접수 (동일 내용 새 견적 생성)
+                </button>
               </div>
             )}
             {sel.status === 'rejected' && (
@@ -515,7 +576,7 @@ export default function AdminPage() {
                   style={{ ...S.btn, background:'#2563eb', color:'#fff', width:'100%', justifyContent:'center' }}>
                   {loading ? '처리 중...' : `${NEXT_STEP[sel.status].label} →`}
                 </button>
-                <button onClick={()=>changeStatus('issue_reported','문제 상황 접수')} disabled={loading}
+                <button onClick={()=>{ setIssueDraft((sel.issue_note as string)||''); setShowIssueForm(true) }} disabled={loading}
                   style={{ ...S.sBtn, color:'#dc2626', border:'1.5px solid #fca5a5', width:'100%', justifyContent:'center' }}>
                   ⚠️ 문제 상황 접수
                 </button>
@@ -523,6 +584,24 @@ export default function AdminPage() {
             )}
           </div>
         </div>
+
+        {/* 문제 상황 내용 작성 폼 */}
+        {showIssueForm && (
+          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+            <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#dc2626', marginBottom:6 }}>문제 상황 내용 (고객에게 메일로 전달됩니다)</label>
+            <textarea value={issueDraft} onChange={e=>setIssueDraft(e.target.value)}
+              placeholder="발생한 문제 상황을 상세히 입력하세요..."
+              style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, minHeight:90, resize:'vertical', fontFamily:'inherit' }} />
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:8 }}>
+              <button onClick={()=>{ setShowIssueForm(false); setIssueDraft('') }} disabled={loading}
+                style={{ ...S.sBtn }}>취소</button>
+              <button onClick={submitIssue} disabled={loading}
+                style={{ ...S.btn, background:'#dc2626', color:'#fff' }}>
+                {loading ? '접수 중...' : '문제 상황 접수 및 메일 발송'}
+              </button>
+            </div>
+          </div>
+        )}
         {sel.status === 'shipping_ready' && (
           <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
             <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>배송사 / 송장번호</label>
@@ -714,17 +793,31 @@ export default function AdminPage() {
             <button style={S.sBtn} onClick={refresh}>↻ 새로고침</button>
           </div>
 
-          <div style={{ display:'flex', gap:4, marginBottom:16, background:'#f3f4f6', padding:3, borderRadius:10, width:'fit-content' }}>
-            {(['all','pending','approved','rejected','deleted'] as const).map(f => (
-              <button key={f} onClick={()=>setFilter(f)} style={{
-                padding:'6px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
-                background: filter===f?'#fff':'transparent',
-                color: filter===f ? (f==='deleted'?'#dc2626':'#1a1a1a') : '#6b7280',
-                boxShadow: filter===f?'0 1px 3px rgba(0,0,0,.1)':'none',
-              }}>
-                {f==='all'?'전체':f==='deleted'?'🗑 삭제':BADGE_LABEL[f]} {f!=='all'&&`(${counts[f]})`}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:4, background:'#f3f4f6', padding:3, borderRadius:10, width:'fit-content' }}>
+              {(['all','pending','approved','rejected','deleted'] as const).map(f => (
+                <button key={f} onClick={()=>setFilter(f)} style={{
+                  padding:'6px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
+                  background: filter===f?'#fff':'transparent',
+                  color: filter===f ? (f==='deleted'?'#dc2626':'#1a1a1a') : '#6b7280',
+                  boxShadow: filter===f?'0 1px 3px rgba(0,0,0,.1)':'none',
+                }}>
+                  {f==='all'?'전체':f==='deleted'?'🗑 삭제':BADGE_LABEL[f]} {f!=='all'&&`(${counts[f]})`}
+                </button>
+              ))}
+            </div>
+            {filter !== 'deleted' && (
+              <button onClick={bulkDelete} disabled={loading || selectedIds.length===0}
+                style={{
+                  padding:'8px 16px', borderRadius:8, fontSize:13, fontWeight:600,
+                  cursor: selectedIds.length===0 ? 'not-allowed' : 'pointer',
+                  border:'1.5px solid #fca5a5',
+                  background: selectedIds.length===0 ? '#fafafa' : '#fef2f2',
+                  color: selectedIds.length===0 ? '#9ca3af' : '#dc2626',
+                }}>
+                🗑 선택 삭제{selectedIds.length>0 ? ` (${selectedIds.length})` : ''}
               </button>
-            ))}
+            )}
           </div>
 
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -734,39 +827,39 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* 활성 견적 — 클릭=상세, 우측=삭제 */}
-            {filter !== 'deleted' && filtered.map(q => (
-              <div key={q.id} style={{
-                display:'flex', alignItems:'center', gap:8, padding:'14px 16px',
-                background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, transition:'border-color .15s',
-              }}
-              onMouseEnter={e=>(e.currentTarget.style.borderColor='#93c5fd')}
-              onMouseLeave={e=>(e.currentTarget.style.borderColor='#e5e7eb')}>
-                <div onClick={()=>{setSel(q);setAForm({price:'',days:'',note:''})}}
-                  style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
-                      <span style={{ fontWeight:700, fontSize:14 }}>{q.quote_no}</span>
-                      <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
-                        {BADGE_LABEL[q.status]}
-                      </span>
-                      <span style={{ fontSize:11, color:'#9ca3af' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
+            {/* 활성 견적 — 좌측 체크박스 선택, 클릭=상세 */}
+            {filter !== 'deleted' && filtered.map(q => {
+              const checked = selectedIds.includes(q.id)
+              return (
+                <div key={q.id} style={{
+                  display:'flex', alignItems:'center', gap:10, padding:'14px 16px',
+                  background: checked ? '#eff6ff' : '#fff',
+                  border:`1px solid ${checked ? '#93c5fd' : '#e5e7eb'}`, borderRadius:12, transition:'all .15s',
+                }}>
+                  <input type="checkbox" checked={checked} onChange={()=>toggleSelect(q.id)}
+                    style={{ width:17, height:17, cursor:'pointer', accentColor:'#2563eb', flexShrink:0 }} />
+                  <div onClick={()=>{ setSel(q); setAForm({price:'',days:'',note:''}); setShowIssueForm(false) }}
+                    style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                        <span style={{ fontWeight:700, fontSize:14 }}>{q.quote_no}</span>
+                        <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
+                          {BADGE_LABEL[q.status]}
+                        </span>
+                        <span style={{ fontSize:11, color:'#9ca3af' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
+                      </div>
+                      <div style={{ fontSize:13, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {q.file_name} &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} &nbsp;·&nbsp; {q.qty}개
+                      </div>
                     </div>
-                    <div style={{ fontSize:13, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {q.file_name} &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} &nbsp;·&nbsp; {q.qty}개
+                    <div style={{ textAlign:'right', flexShrink:0 }}>
+                      <div style={{ fontSize:15, fontWeight:700 }}>{krw(q.final_price||q.auto_price)}</div>
                     </div>
+                    <span style={{ color:'#9ca3af', fontSize:18 }}>›</span>
                   </div>
-                  <div style={{ textAlign:'right', flexShrink:0 }}>
-                    <div style={{ fontSize:15, fontWeight:700 }}>{krw(q.final_price||q.auto_price)}</div>
-                  </div>
-                  <span style={{ color:'#9ca3af', fontSize:18 }}>›</span>
                 </div>
-                <button onClick={()=>handleDelete(q)} title="견적 삭제" style={{
-                  flexShrink:0, background:'#fef2f2', color:'#dc2626', border:'1px solid #fca5a5',
-                  borderRadius:8, width:34, height:34, cursor:'pointer', fontSize:15, lineHeight:1,
-                }}>🗑</button>
-              </div>
-            ))}
+              )
+            })}
 
             {/* 삭제된 견적 — 요약·읽기전용·파일 제외 */}
             {filter === 'deleted' && deletedQuotes.map(q => (
