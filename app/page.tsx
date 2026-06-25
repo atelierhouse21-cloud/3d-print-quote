@@ -221,10 +221,10 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 type FileItem = {
   id:string; file:File
   vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null
-  method:string; material:string; density:number; color:string; quality:string; factor:number
+  method:string; material:string; density:number; coefficient:number; color:string; quality:string; factor:number
   qty:number; note:string
 }
-type CustomerForm = { name:string; email:string; company:string; phone:string; address:string }
+type CustomerForm = { name:string; email:string; company:string; phone:string; address:string; addressDetail:string }
 
 // ── 설정 기반 옵션 헬퍼 (options는 항상 정규화되어 존재) ──
 function getMethodCfg(options: PrintOptions, method: string): MethodCfg {
@@ -259,6 +259,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
     method,
     material: mat?.name || '',
     density:  mat?.density || 1.0,
+    coefficient: mat?.coefficient || 1000,
     color:    colors[0] || '',
     quality:  quals[0]?.name || '',
     factor:   quals[0]?.factor || 1.0,
@@ -289,7 +290,6 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   onRemove: (id:string)=>void
   isMobile: boolean
 }) {
-  const cfg            = getMethodCfg(options, item.method)
   const enabledMethods = getEnabledMethods(options)
   const materials      = getMaterials(options, item.method)
   const colors         = getColorsOf(materials, item.material)
@@ -303,20 +303,22 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
     onChange(item.id, 'method',   m)
     onChange(item.id, 'material', mat?.name || '')
     onChange(item.id, 'density',  mat?.density || 1.0)
+    onChange(item.id, 'coefficient', mat?.coefficient || 1000)
     onChange(item.id, 'color',    mat?.colors?.[0] || '')
     onChange(item.id, 'quality',  quals[0]?.name || '')
     onChange(item.id, 'factor',   quals[0]?.factor || 1.0)
   }
-  // 소재 변경 시 밀도·색상 갱신 (색상은 소재에 종속)
+  // 소재 변경 시 밀도·단가계수·색상 갱신 (색상은 소재에 종속)
   const updMaterial = (name: string) => {
     const mat = materials.find(x => x.name === name)
     onChange(item.id, 'material', name)
     onChange(item.id, 'density',  mat?.density || 1.0)
+    onChange(item.id, 'coefficient', mat?.coefficient || 1000)
     onChange(item.id, 'color',    mat?.colors?.[0] || '')
   }
 
   const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
-  const price = item.vol ? calcPriceV2(item.vol, item.density, cfg.coefficient, item.qty, item.factor) : 0
+  const price = item.vol ? calcPriceV2(item.vol, item.density, item.coefficient, item.qty, item.factor) : 0
 
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
@@ -421,7 +423,7 @@ export default function Home() {
   const [optLoaded, setOptLoaded] = useState(false)
   const [done, setDone]       = useState<string|null>(null)
   const [loading, setLoading] = useState(false)
-  const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',address:''})
+  const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',address:'',addressDetail:''})
   const [items, setItems]     = useState<FileItem[]>([])
   const [drag, setDrag]       = useState(false)
   const [agreePrivacy, setAgreePrivacy]     = useState(false)
@@ -441,6 +443,33 @@ export default function Home() {
 
   const updC = (k: keyof CustomerForm, v: string) => setCustomer(p=>({...p,[k]:v}))
 
+  // 다음(카카오) 우편번호 서비스 — 무료, API 키 불필요
+  const loadPostcodeScript = () => new Promise<void>((resolve, reject) => {
+    if ((window as any).daum?.Postcode) return resolve()
+    const existing = document.getElementById('daum-postcode-script') as HTMLScriptElement | null
+    if (existing) { existing.addEventListener('load', () => resolve()); existing.addEventListener('error', () => reject(new Error('load fail'))); return }
+    const s = document.createElement('script')
+    s.id = 'daum-postcode-script'
+    s.src = 'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js'
+    s.onload = () => resolve()
+    s.onerror = () => reject(new Error('load fail'))
+    document.head.appendChild(s)
+  })
+  const openPostcode = async () => {
+    try {
+      await loadPostcodeScript()
+      new (window as any).daum.Postcode({
+        oncomplete: (data: any) => {
+          const addr = data.roadAddress || data.jibunAddress || data.address || ''
+          const zone = data.zonecode ? `(${data.zonecode}) ` : ''
+          setCustomer(p => ({ ...p, address: zone + addr }))
+        },
+      }).open()
+    } catch {
+      alert('주소 검색 서비스를 불러오지 못했습니다. 네트워크 상태를 확인하거나, 주소를 직접 입력해 주세요.')
+    }
+  }
+
   const handleFile = (f: File | null) => {
     if (!f) return
     const ext = f.name.split('.').pop()?.toLowerCase()
@@ -453,7 +482,7 @@ export default function Home() {
   }
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
-  const totalPrice = items.reduce((sum,it)=> sum + (it.vol ? calcPriceV2(it.vol, it.density, getMethodCfg(options,it.method).coefficient, it.qty, it.factor) : 0), 0)
+  const totalPrice = items.reduce((sum,it)=> sum + (it.vol ? calcPriceV2(it.vol, it.density, it.coefficient, it.qty, it.factor) : 0), 0)
 
   const submit = async () => {
     if (!agreePrivacy) { alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.'); return }
@@ -461,7 +490,7 @@ export default function Home() {
     try {
       const primary = items[0]
       const primaryPrice = primary.vol
-        ? calcPriceV2(primary.vol, primary.density, getMethodCfg(options,primary.method).coefficient, primary.qty, primary.factor)
+        ? calcPriceV2(primary.vol, primary.density, primary.coefficient, primary.qty, primary.factor)
         : null
       // 파일별 사양 + 요청사항을 하나의 note로 합침
       const finalNote = items.map((it,i)=>{
@@ -471,7 +500,9 @@ export default function Home() {
 
       const payload = {
         name: customer.name, email: customer.email,
-        company: customer.company, phone: customer.phone, address: customer.address, note: finalNote,
+        company: customer.company, phone: customer.phone,
+        address: [customer.address, customer.addressDetail].filter(s=>s&&s.trim()).join(' '),
+        note: finalNote,
         method: primary.method, material: primary.material,
         color: primary.color, quality: primary.quality,
         qty: primary.qty, vol: primary.vol || 0,
@@ -526,7 +557,7 @@ export default function Home() {
           담당자 검토 후 <b>1~2 영업일 이내</b> 최종 견적을 안내드립니다.<br/>
           <span style={{fontSize:13,color:'#9ca3af'}}>견적 번호: {done}</span>
         </p>
-        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:'',address:''});setItems([]);setAgreePrivacy(false);setAgreeMarketing(false)}}>새 견적 요청</button>
+        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:'',address:'',addressDetail:''});setItems([]);setAgreePrivacy(false);setAgreeMarketing(false)}}>새 견적 요청</button>
       </div></div>
     </div>
   )
@@ -563,17 +594,71 @@ export default function Home() {
               <div style={S.grp}><label style={S.lbl}>업체명</label><input type="text" value={customer.company} onChange={e=>updC('company',e.target.value)} placeholder="(주)○○ (미입력 시 개인으로 처리)" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>연락처 *</label><input type="tel" value={customer.phone} onChange={e=>updC('phone',e.target.value)} placeholder="010-0000-0000" style={S.inp}/></div>
             </div>
-            <div style={{...S.grp,marginBottom:20}}>
+            <div style={{...S.grp,marginBottom:16}}>
               <label style={S.lbl}>수령 주소 *</label>
-              <input type="text" value={customer.address} onChange={e=>updC('address',e.target.value)}
-                placeholder="출력물을 받으실 주소를 입력하세요" style={S.inp}/>
+              <div style={{display:'flex',gap:8}}>
+                <input type="text" value={customer.address} onChange={e=>updC('address',e.target.value)}
+                  placeholder="주소 검색을 눌러 입력하세요" style={{...S.inp,flex:1,minWidth:0}}/>
+                <button type="button" onClick={openPostcode}
+                  style={{...S.btn,background:'#374151',color:'#fff',flexShrink:0,padding:'9px 16px'}}>주소 검색</button>
+              </div>
+              <input type="text" value={customer.addressDetail} onChange={e=>updC('addressDetail',e.target.value)}
+                placeholder="상세주소 (동·호수 등)" style={{...S.inp,marginTop:8}}/>
             </div>
+
+            {/* 개인정보 수집·이용 동의 */}
+            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  <input type="checkbox" checked={agreePrivacy} onChange={e=>setAgreePrivacy(e.target.checked)}
+                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                  <span><span style={{color:'#dc2626'}}>[필수]</span> 개인정보 수집·이용에 동의합니다.</span>
+                </label>
+                <button type="button" onClick={()=>setShowPrivacyBox(v=>!v)}
+                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {showPrivacyBox?'접기':'자세히'}
+                </button>
+              </div>
+              {showPrivacyBox && (
+                <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
+                  <div><b>· 수집·이용 목적:</b> 3D 프린팅 견적 상담, 제작 및 출력물 배송, 견적 진행 안내(이메일·문자) 발송</div>
+                  <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 수령(배송) 주소, 업로드한 3D 모델 파일 및 견적 정보</div>
+                  <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_YEARS}년 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
+                  <div><b>· 동의 거부 권리:</b> 동의를 거부할 권리가 있으며, 거부 시 견적 서비스 이용이 제한될 수 있습니다.</div>
+                </div>
+              )}
+            </div>
+
+            {/* 광고·마케팅 활용 동의 (선택) */}
+            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:20}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  <input type="checkbox" checked={agreeMarketing} onChange={e=>setAgreeMarketing(e.target.checked)}
+                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                  <span><span style={{color:'#6b7280'}}>[선택]</span> 광고·마케팅 활용에 동의합니다.</span>
+                </label>
+                <button type="button" onClick={()=>setShowMarketingBox(v=>!v)}
+                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {showMarketingBox?'접기':'자세히'}
+                </button>
+              </div>
+              {showMarketingBox && (
+                <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
+                  <div><b>· 목적:</b> 신제품·할인·이벤트 등 광고성 정보 안내(이메일·문자), 작업 내용(제작물)을 자사 광고·홍보에 활용</div>
+                  <div><b>· 항목:</b> 이름, 이메일, 연락처</div>
+                  <div><b>· 보유·이용 기간:</b> 동의 철회 시까지 (최대 견적 정보 보유기간과 동일)</div>
+                  <div><b>· 미동의하셔도 견적 서비스 이용에는 제한이 없습니다.</b></div>
+                </div>
+              )}
+            </div>
+
             <div style={{display:'flex',justifyContent:'flex-end'}}>
               <button style={{...S.btn,background:'#2563eb',color:'#fff'}}
                 onClick={()=>{
                   if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}
                   if(!customer.phone.trim()){alert('연락처는 필수입니다.');return}
                   if(!customer.address.trim()){alert('수령 주소는 필수입니다.');return}
+                  if(!agreePrivacy){alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.');return}
                   setStep(2)
                 }}>
                 다음 단계 →
@@ -628,7 +713,7 @@ export default function Home() {
             <div style={{background:'#f9fafb',borderRadius:10,padding:'12px 16px',marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:8}}>고객 정보</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                {[['이름',customer.name],['이메일',customer.email],['업체명',customer.company||'개인'],['연락처',customer.phone||'-'],['수령 주소',customer.address||'-']].map(([l,v])=>(
+                {[['이름',customer.name],['이메일',customer.email],['업체명',customer.company||'개인'],['연락처',customer.phone||'-'],['수령 주소',[customer.address,customer.addressDetail].filter(s=>s&&s.trim()).join(' ')||'-']].map(([l,v])=>(
                   <div key={l}><span style={{fontSize:11,color:'#9ca3af'}}>{l}: </span><span style={{fontSize:13,fontWeight:600}}>{v}</span></div>
                 ))}
               </div>
@@ -641,7 +726,7 @@ export default function Home() {
                     <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
                     <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
                   </div>
-                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPriceV2(item.vol,item.density,getMethodCfg(options,item.method).coefficient,item.qty,item.factor)):'담당자 산출'}</span>
+                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPriceV2(item.vol,item.density,item.coefficient,item.qty,item.factor)):'담당자 산출'}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
@@ -667,54 +752,8 @@ export default function Home() {
               </div>
             )}
 
-            <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:16,alignItems:'flex-start'}}>
+            <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:20,alignItems:'flex-start'}}>
               <span></span><span>위 금액은 자동 계산 예상 견적입니다. 담당자 검토 후 <b>확정 견적을 이메일로 안내</b>드립니다.</span>
-            </div>
-
-            {/* 개인정보 수집·이용 동의 */}
-            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:10}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
-                  <input type="checkbox" checked={agreePrivacy} onChange={e=>setAgreePrivacy(e.target.checked)}
-                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
-                  <span><span style={{color:'#dc2626'}}>[필수]</span> 개인정보 수집·이용에 동의합니다.</span>
-                </label>
-                <button type="button" onClick={()=>setShowPrivacyBox(v=>!v)}
-                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
-                  {showPrivacyBox?'접기':'자세히'}
-                </button>
-              </div>
-              {showPrivacyBox && (
-                <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
-                  <div><b>· 수집·이용 목적:</b> 3D 프린팅 견적 상담, 제작 및 출력물 배송, 견적 진행 안내(이메일·문자) 발송</div>
-                  <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 수령(배송) 주소, 업로드한 3D 모델 파일 및 견적 정보</div>
-                  <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_YEARS}년 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
-                  <div><b>· 동의 거부 권리:</b> 동의를 거부할 권리가 있으며, 거부 시 견적 서비스 이용이 제한될 수 있습니다.</div>
-                </div>
-              )}
-            </div>
-
-            {/* 광고·마케팅 활용 동의 (선택) */}
-            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:20}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
-                  <input type="checkbox" checked={agreeMarketing} onChange={e=>setAgreeMarketing(e.target.checked)}
-                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
-                  <span><span style={{color:'#6b7280'}}>[선택]</span> 광고·마케팅 활용에 동의합니다.</span>
-                </label>
-                <button type="button" onClick={()=>setShowMarketingBox(v=>!v)}
-                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
-                  {showMarketingBox?'접기':'자세히'}
-                </button>
-              </div>
-              {showMarketingBox && (
-                <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
-                  <div><b>· 목적:</b> 신제품·할인·이벤트 등 광고성 정보 안내(이메일·문자)</div>
-                  <div><b>· 항목:</b> 이름, 이메일, 연락처</div>
-                  <div><b>· 보유·이용 기간:</b> 동의 철회 시까지 (최대 견적 정보 보유기간과 동일)</div>
-                  <div><b>· 미동의하셔도 견적 서비스 이용에는 제한이 없습니다.</b></div>
-                </div>
-              )}
             </div>
 
             <div style={{display:'flex',justifyContent:'space-between'}}>
