@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY } from '@/lib/constants'
+import { useState, useEffect, useRef } from 'react'
+import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, RETENTION_MS } from '@/lib/constants'
 import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 const S: Record<string, React.CSSProperties> = {
@@ -317,6 +317,28 @@ export default function AdminPage() {
   const refresh = async () => {
     const data = await fetchQuotes(password); setQuotes(data)
   }
+
+  // ── 보유기간 만료 견적 자동 삭제 (관리자 접속 시 1회) ──
+  const purgedRef = useRef(false)
+  useEffect(() => {
+    if (!authed || purgedRef.current) return
+    const now = Date.now()
+    const expired = quotes.filter(q => !q.deleted_at && (now - new Date(q.created_at).getTime() > RETENTION_MS))
+    if (expired.length === 0) return
+    purgedRef.current = true
+    ;(async () => {
+      for (const q of expired) {
+        try {
+          await fetch(`/api/quotes/${q.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+            body: JSON.stringify({ action: 'soft_delete', reason: '개인정보 보관기간 만료로 인한 자동 삭제' })
+          })
+        } catch {}
+      }
+      refresh()
+    })()
+  }, [authed, quotes])
 
   const loadSettings = async () => {
     try {
@@ -668,6 +690,7 @@ export default function AdminPage() {
           <Info label="이름" value={`${sel.name} (${sel.company||'개인'})`} />
           <Info label="이메일" value={sel.email} />
           {sel.phone && <Info label="연락처" value={sel.phone} />}
+          <Info label="마케팅 활용 동의" value={sel.marketing_consent ? '동의' : '미동의'} />
         </Section>
         <Section title="업로드 파일">
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
@@ -865,6 +888,12 @@ export default function AdminPage() {
                         <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
                           {BADGE_LABEL[q.status]}
                         </span>
+                        <span style={{ padding:'2px 8px', borderRadius:20, fontSize:10, fontWeight:600,
+                          ...(q.marketing_consent
+                            ? { background:'#f0fdf4', color:'#15803d', border:'1px solid #86efac' }
+                            : { background:'#f3f4f6', color:'#9ca3af', border:'1px solid #e5e7eb' }) }}>
+                          마케팅 {q.marketing_consent ? '동의' : '미동의'}
+                        </span>
                         <span style={{ fontSize:11, color:'#9ca3af' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
                       </div>
                       <div style={{ fontSize:13, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -896,6 +925,7 @@ export default function AdminPage() {
                 <div style={{ fontSize:11, color:'#9ca3af' }}>
                   접수 {fmtStageTime(q.created_at)} &nbsp;·&nbsp; 삭제 {fmtStageTime(q.deleted_at)} &nbsp;·&nbsp; 파일 제거됨
                 </div>
+                {q.admin_note && <div style={{ fontSize:11, color:'#b45309', marginTop:3 }}>사유: {q.admin_note}</div>}
               </div>
             ))}
           </div>
