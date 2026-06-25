@@ -362,7 +362,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       const asQuoteNo = `${rootNo}AS${String(nextIdx).padStart(2, '0')}`
 
       const asNote = `[A/S 접수 — 원본 ${quote.quote_no}]` + (quote.note ? `\n${quote.note}` : '')
-      const { error: insErr } = await supabaseAdmin
+      const { data: asRow, error: insErr } = await supabaseAdmin
         .from('quotes')
         .insert({
           quote_no: asQuoteNo,
@@ -375,7 +375,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           size_x: quote.size_x ?? null, size_y: quote.size_y ?? null, size_z: quote.size_z ?? null,
           status: 'pending',
         })
+        .select()
+        .single()
       if (insErr) throw insErr
+
+      // 원본 처리정보 스냅샷 저장 — 컬럼 없을 수 있어 best-effort
+      const asOrigin = {
+        quote_no: quote.quote_no,
+        shipping_company: quote.shipping_company ?? null,
+        tracking_number: quote.tracking_number ?? null,
+        final_price: quote.final_price ?? null,
+        final_days: quote.final_days ?? null,
+        shipped_at: quote.stage_times?.shipped ?? null,
+      }
+      const { error: origErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ as_origin: asOrigin })
+        .eq('id', asRow.id)
+      if (origErr) console.warn('[API] as_origin 저장 생략(컬럼 누락 가능):', origErr.message)
 
       console.log('[API] A/S quote created:', asQuoteNo)
       return NextResponse.json({ ok: true, quote_no: asQuoteNo })
