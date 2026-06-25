@@ -193,10 +193,10 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU} onMouseLeave={onMU}
         onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
         {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#6b7280'}}>
-          <div style={{fontSize:24}}>⏳</div><div style={{fontSize:12}}>분석 중...</div>
+          <div style={{fontSize:12}}>분석 중...</div>
         </div>}
         {err&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,color:'#9ca3af'}}>
-          <div style={{fontSize:24}}>📄</div><div style={{fontSize:12}}>미리보기 불가</div>
+          <div style={{fontSize:12}}>미리보기 불가</div>
         </div>}
         <canvas ref={canvasRef} width={500} height={height} style={{width:'100%',height:'100%',display:loading||err?'none':'block'}}/>
         {!loading&&!err&&<div style={{position:'absolute',bottom:6,right:8,fontSize:10,color:'#9ca3af',background:'rgba(255,255,255,0.85)',padding:'2px 7px',borderRadius:5,pointerEvents:'none'}}>
@@ -224,7 +224,7 @@ type FileItem = {
   method:string; material:string; density:number; color:string; quality:string; factor:number
   qty:number; note:string
 }
-type CustomerForm = { name:string; email:string; company:string; phone:string }
+type CustomerForm = { name:string; email:string; company:string; phone:string; address:string }
 
 // ── 설정 기반 옵션 헬퍼 (options는 항상 정규화되어 존재) ──
 function getMethodCfg(options: PrintOptions, method: string): MethodCfg {
@@ -326,7 +326,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
           <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>{idx+1}</span>
           <span style={{fontWeight:600,fontSize:13,maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.file.name}</span>
         </div>
-        <button onClick={()=>onRemove(item.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:18,lineHeight:1,padding:'0 4px'}}>✕</button>
+        <button onClick={()=>onRemove(item.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:18,lineHeight:1,padding:'0 4px'}}>×</button>
       </div>
 
       {/* 본문 — 폰에서는 미리보기(위) + 설정(아래) 1열로 쌓음 */}
@@ -421,7 +421,7 @@ export default function Home() {
   const [optLoaded, setOptLoaded] = useState(false)
   const [done, setDone]       = useState<string|null>(null)
   const [loading, setLoading] = useState(false)
-  const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:''})
+  const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:'',address:''})
   const [items, setItems]     = useState<FileItem[]>([])
   const [drag, setDrag]       = useState(false)
   const [agreePrivacy, setAgreePrivacy]     = useState(false)
@@ -471,7 +471,7 @@ export default function Home() {
 
       const payload = {
         name: customer.name, email: customer.email,
-        company: customer.company, phone: customer.phone, note: finalNote,
+        company: customer.company, phone: customer.phone, address: customer.address, note: finalNote,
         method: primary.method, material: primary.material,
         color: primary.color, quality: primary.quality,
         qty: primary.qty, vol: primary.vol || 0,
@@ -512,7 +512,6 @@ export default function Home() {
     <div style={S.wrap}>
       <Logo/>
       <div style={{ textAlign:'center', padding:'60px 0', color:'#9ca3af' }}>
-        <div style={{ fontSize:28, marginBottom:10 }}>⏳</div>
         <div style={{ fontSize:14 }}>옵션 정보를 불러오는 중...</div>
       </div>
     </div>
@@ -521,14 +520,13 @@ export default function Home() {
   if (done) return (
     <div style={S.wrap}><Logo/>
       <div style={S.card}><div style={{...S.body,textAlign:'center',padding:'52px 28px'}}>
-        <div style={{fontSize:64,marginBottom:20}}>🎉</div>
         <h2 style={{fontSize:22,fontWeight:700,marginBottom:10}}>견적 요청이 접수되었습니다!</h2>
         <p style={{color:'#6b7280',lineHeight:1.8,marginBottom:28}}>
           <b>{customer.email}</b>으로 접수 확인 메일을 발송했습니다.<br/>
           담당자 검토 후 <b>1~2 영업일 이내</b> 최종 견적을 안내드립니다.<br/>
           <span style={{fontSize:13,color:'#9ca3af'}}>견적 번호: {done}</span>
         </p>
-        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:''});setItems([]);setAgreePrivacy(false);setAgreeMarketing(false)}}>새 견적 요청</button>
+        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:'',address:''});setItems([]);setAgreePrivacy(false);setAgreeMarketing(false)}}>새 견적 요청</button>
       </div></div>
     </div>
   )
@@ -545,7 +543,7 @@ export default function Home() {
                   background:step>i+1?'#16a34a':step===i+1?'#2563eb':'#fff',
                   border:`2px solid ${step>i+1?'#16a34a':step===i+1?'#2563eb':'#d1d5db'}`,
                   color:step>i+1||step===i+1?'#fff':'#9ca3af'}}>
-                  {step>i+1?'✓':i+1}
+                  {i+1}
                 </div>
                 <span style={{fontSize:isMobile?11:12,whiteSpace:'nowrap',color:step===i+1?'#1a1a1a':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
               </div>
@@ -559,15 +557,25 @@ export default function Home() {
           {/* ── STEP 1 ── */}
           {step===1&&<>
             <p style={{color:'#6b7280',marginBottom:20,fontSize:13}}>견적 요청자 정보를 입력해 주세요.</p>
-            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:14,marginBottom:20}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:14,marginBottom:14}}>
               <div style={S.grp}><label style={S.lbl}>이름 *</label><input type="text" value={customer.name} onChange={e=>updC('name',e.target.value)} placeholder="홍길동" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>이메일 *</label><input type="email" value={customer.email} onChange={e=>updC('email',e.target.value)} placeholder="example@mail.com" style={S.inp}/></div>
-              <div style={S.grp}><label style={S.lbl}>회사 / 기관</label><input type="text" value={customer.company} onChange={e=>updC('company',e.target.value)} placeholder="(주)회사명 또는 개인" style={S.inp}/></div>
-              <div style={S.grp}><label style={S.lbl}>연락처</label><input type="tel" value={customer.phone} onChange={e=>updC('phone',e.target.value)} placeholder="010-0000-0000" style={S.inp}/></div>
+              <div style={S.grp}><label style={S.lbl}>업체명</label><input type="text" value={customer.company} onChange={e=>updC('company',e.target.value)} placeholder="(주)○○ (미입력 시 개인으로 처리)" style={S.inp}/></div>
+              <div style={S.grp}><label style={S.lbl}>연락처 *</label><input type="tel" value={customer.phone} onChange={e=>updC('phone',e.target.value)} placeholder="010-0000-0000" style={S.inp}/></div>
+            </div>
+            <div style={{...S.grp,marginBottom:20}}>
+              <label style={S.lbl}>수령 주소 *</label>
+              <input type="text" value={customer.address} onChange={e=>updC('address',e.target.value)}
+                placeholder="출력물을 받으실 주소를 입력하세요" style={S.inp}/>
             </div>
             <div style={{display:'flex',justifyContent:'flex-end'}}>
               <button style={{...S.btn,background:'#2563eb',color:'#fff'}}
-                onClick={()=>{if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}setStep(2)}}>
+                onClick={()=>{
+                  if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}
+                  if(!customer.phone.trim()){alert('연락처는 필수입니다.');return}
+                  if(!customer.address.trim()){alert('수령 주소는 필수입니다.');return}
+                  setStep(2)
+                }}>
                 다음 단계 →
               </button>
             </div>
@@ -584,7 +592,7 @@ export default function Home() {
                 background:drag?'#eff6ff':'#f9fafb',transition:'all .15s',marginBottom:10}}>
               <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
                 <div style={{flex:1,minWidth:200}}>
-                  <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>📂 파일을 이 영역에 드래그 하거나</div>
+                  <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>파일을 이 영역에 드래그 하거나</div>
                   <div style={{fontSize:12,color:'#6b7280'}}>STL 파일만 지원</div>
                 </div>
                 <button onClick={()=>fileRef.current?.click()}
@@ -620,7 +628,7 @@ export default function Home() {
             <div style={{background:'#f9fafb',borderRadius:10,padding:'12px 16px',marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:8}}>고객 정보</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                {[['이름',customer.name],['이메일',customer.email],['회사',customer.company||'-'],['연락처',customer.phone||'-']].map(([l,v])=>(
+                {[['이름',customer.name],['이메일',customer.email],['업체명',customer.company||'개인'],['연락처',customer.phone||'-'],['수령 주소',customer.address||'-']].map(([l,v])=>(
                   <div key={l}><span style={{fontSize:11,color:'#9ca3af'}}>{l}: </span><span style={{fontSize:13,fontWeight:600}}>{v}</span></div>
                 ))}
               </div>
@@ -660,7 +668,7 @@ export default function Home() {
             )}
 
             <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:16,alignItems:'flex-start'}}>
-              <span>⚠️</span><span>위 금액은 자동 계산 예상 견적입니다. 담당자 검토 후 <b>확정 견적을 이메일로 안내</b>드립니다.</span>
+              <span></span><span>위 금액은 자동 계산 예상 견적입니다. 담당자 검토 후 <b>확정 견적을 이메일로 안내</b>드립니다.</span>
             </div>
 
             {/* 개인정보 수집·이용 동의 */}
@@ -679,7 +687,7 @@ export default function Home() {
               {showPrivacyBox && (
                 <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
                   <div><b>· 수집·이용 목적:</b> 3D 프린팅 견적 상담, 제작 및 출력물 배송, 견적 진행 안내(이메일·문자) 발송</div>
-                  <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 업로드한 3D 모델 파일 및 견적 정보</div>
+                  <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 수령(배송) 주소, 업로드한 3D 모델 파일 및 견적 정보</div>
                   <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_YEARS}년 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
                   <div><b>· 동의 거부 권리:</b> 동의를 거부할 권리가 있으며, 거부 시 견적 서비스 이용이 제한될 수 있습니다.</div>
                 </div>
@@ -712,7 +720,7 @@ export default function Home() {
             <div style={{display:'flex',justifyContent:'space-between'}}>
               <button style={S.sBtn} onClick={()=>setStep(2)}>← 이전</button>
               <button style={{...S.btn,background:(loading||!agreePrivacy)?'#9ca3af':'#16a34a',color:'#fff',cursor:loading?'wait':(!agreePrivacy?'not-allowed':'pointer')}} onClick={submit} disabled={loading||!agreePrivacy}>
-                {loading?'제출 중...':'✓ 견적 요청 제출'}
+                {loading?'제출 중...':'견적 요청 제출'}
               </button>
             </div>
           </>}
@@ -727,7 +735,7 @@ function Logo() {
   return (
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
       <div>
-        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>🖨️ 3D 프린팅 견적 시스템</div>
+        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>3D 프린팅 견적 시스템</div>
         <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>FDM · SLA/DLP · SLS · MJF — 자동 견적 + 담당자 확인</div>
       </div>
     </div>
