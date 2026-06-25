@@ -6,7 +6,7 @@ import { krw } from '@/lib/constants'
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 // 이메일 템플릿 함수들
-function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: string, shippingCompany?: string) {
+function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: string, shippingCompany?: string, issueNote?: string) {
   const templates: Record<string, any> = {
     payment_confirmed: {
       subject: `[${quote.quote_no}] 결제가 확인되었습니다`,
@@ -74,6 +74,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
           <p style="margin-bottom:20px;">주문하신 제품에 문제가 발생하여 확인 중입니다. 빠른 시일 내에 해결 방안을 안내드리겠습니다.</p>
           <div style="background:#fef2f2;border:2px solid #ef4444;border-radius:8px;padding:16px;font-size:14px;color:#991b1b;">
             <div style="font-weight:700;margin-bottom:8px;">견적 번호: ${quote.quote_no}</div>
+            ${issueNote ? `<div style="margin-bottom:8px;white-space:pre-wrap;"><b>문제 내용:</b> ${issueNote}</div>` : ''}
             <div>담당자가 확인 후 개별 연락드리겠습니다.</div>
           </div>
           <p style="margin-top:16px;font-size:13px;color:#6b7280;">문의사항은 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a>으로 연락 주시기 바랍니다.</p>
@@ -313,6 +314,73 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     // ── 문제 상황 업데이트 ──
+    // ── 문제 상황 접수 (내용 작성 + 메일에 내용 포함) ──
+    if (action === 'report_issue') {
+      const issueNote = (body.issue_note || '').trim()
+      if (!issueNote) {
+        return NextResponse.json({ ok: false, error: '문제 상황 내용을 입력하세요.' }, { status: 400 })
+      }
+      // 1) 상태 변경 — 반드시 성공
+      const { error: statusErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ status: 'issue_reported' })
+        .eq('id', params.id)
+      if (statusErr) throw statusErr
+      // 2) 내용 저장 — 컬럼 없을 수 있어 best-effort
+      const { error: noteErr } = await supabaseAdmin
+        .from('quotes')
+        .update({ issue_note: issueNote })
+        .eq('id', params.id)
+      if (noteErr) console.warn('[API] issue_note 저장 생략(컬럼 누락 가능):', noteErr.message)
+      await stampStage('issue_reported')
+
+      // 3) 내용 포함 메일 발송
+      const template = getStatusEmailTemplate('issue_reported', quote, undefined, undefined, issueNote)
+      if (template) {
+        const emailResult = await resend.emails.send({
+          from: process.env.FROM_EMAIL!,
+          to: quote.email,
+          subject: template.subject,
+          html: template.html,
+        })
+        if (emailResult.error) console.error('[EMAIL] 발송 실패:', JSON.stringify(emailResult.error))
+        else console.log('[EMAIL] 발송 성공:', emailResult.data?.id)
+      }
+      console.log('[API] Issue reported with note')
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── A/S 접수: 동일 내용으로 새 견적 생성 (견적번호 뒤에 AS01, AS02…) ──
+    if (action === 'create_as') {
+      // 루트 견적번호 기준으로 다음 AS 번호 계산 (AS 중첩 방지)
+      const rootNo = String(quote.quote_no).replace(/AS\d+$/i, '')
+      const { data: siblings } = await supabaseAdmin
+        .from('quotes')
+        .select('quote_no')
+        .like('quote_no', `${rootNo}AS%`)
+      const nextIdx = (siblings?.length ?? 0) + 1
+      const asQuoteNo = `${rootNo}AS${String(nextIdx).padStart(2, '0')}`
+
+      const asNote = `[A/S 접수 — 원본 ${quote.quote_no}]` + (quote.note ? `\n${quote.note}` : '')
+      const { error: insErr } = await supabaseAdmin
+        .from('quotes')
+        .insert({
+          quote_no: asQuoteNo,
+          name: quote.name, email: quote.email, company: quote.company, phone: quote.phone,
+          note: asNote,
+          method: quote.method, material: quote.material, color: quote.color, quality: quote.quality,
+          qty: quote.qty, infill: quote.infill ?? 20,
+          vol_cm3: quote.vol_cm3, file_name: quote.file_name, file_path: quote.file_path,
+          auto_price: quote.auto_price,
+          size_x: quote.size_x ?? null, size_y: quote.size_y ?? null, size_z: quote.size_z ?? null,
+          status: 'pending',
+        })
+      if (insErr) throw insErr
+
+      console.log('[API] A/S quote created:', asQuoteNo)
+      return NextResponse.json({ ok: true, quote_no: asQuoteNo })
+    }
+
     if (action === 'update_issue') {
       const { issue_note } = body
       const { error: updateErr } = await supabaseAdmin
