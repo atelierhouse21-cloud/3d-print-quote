@@ -73,6 +73,8 @@ export type Quote = {
   tracking_number?: string
   shipping_company?: string
   issue_note?: string
+  privacy_consent?: boolean
+  marketing_consent?: boolean
   stage_times?: Record<string, string>
   deleted_at?: string | null
   as_origin?: {
@@ -182,3 +184,7 @@ export function calcPriceV2(vol: number, density: number, coefficient: number, q
   if (!isFinite(p) || p <= 0) return 0
   return Math.round(p / 100) * 100
 }
+
+// 개인정보 보유기간(년) — 견적 요청일 기준. 이 기간이 지나면 관리자 페이지에서 자동 삭제됨.
+export const RETENTION_YEARS = 3
+export const RETENTION_MS = RETENTION_YEARS * 365 * 24 * 60 * 60 * 1000
