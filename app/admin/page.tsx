@@ -98,7 +98,7 @@ function Milestone({ quote }: { quote: Quote }) {
                 background: isCurrent?'#2563eb':isPast?'#10b981':'#e5e7eb',
                 color: isCurrent||isPast?'#fff':'#9ca3af',
                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, marginBottom:6 }}>
-                {isPast ? '✓' : idx+1}
+                {idx+1}
               </div>
               <div style={{ fontSize:11, fontWeight:600, color: isCurrent?'#2563eb':isPast?'#10b981':'#9ca3af' }}>
                 {step.label}
@@ -199,7 +199,7 @@ function MethodSettingCard({
         <div style={{ padding:'16px 18px' }}>
           {/* 단가 계수 */}
           <div style={{ marginBottom:18 }}>
-            <div style={secTitle}>💰 단가 계수 (관리자 설정 값)</div>
+            <div style={secTitle}>단가 계수 (관리자 설정 값)</div>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               <input type="number" step="1" min={0} value={cfg.coefficient}
                 onChange={e => onChange(method, { ...cfg, coefficient: parseFloat(e.target.value) || 0 })}
@@ -212,7 +212,7 @@ function MethodSettingCard({
 
           {/* 소재 & 색상 */}
           <div style={{ marginBottom:18 }}>
-            <div style={secTitle}>🧱 소재 &amp; 밀도 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
+            <div style={secTitle}>소재 &amp; 밀도 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
             {cfg.materials.map((mat, i) => (
               <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#fff' }}>
                 <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
@@ -223,7 +223,7 @@ function MethodSettingCard({
                     <input type="number" step="0.01" min={0} value={mat.density}
                       onChange={e => updMatDensity(i, e.target.value)} style={{ ...inpS, width:64 }} />
                   </div>
-                  <button onClick={() => removeMat(i)} title="소재 삭제" style={delBtn}>✕</button>
+                  <button onClick={() => removeMat(i)} title="소재 삭제" style={delBtn}>×</button>
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
                   <span style={{ fontSize:11, color:'#9ca3af', fontWeight:700 }}>색상:</span>
@@ -231,7 +231,7 @@ function MethodSettingCard({
                     <span key={c} style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#eff6ff',
                       border:'1px solid #bfdbfe', borderRadius:6, padding:'3px 8px', fontSize:12 }}>
                       {c}
-                      <span onClick={() => removeColor(i, c)} style={{ cursor:'pointer', color:'#9ca3af', fontWeight:700 }}>✕</span>
+                      <span onClick={() => removeColor(i, c)} style={{ cursor:'pointer', color:'#9ca3af', fontWeight:700 }}>×</span>
                     </span>
                   ))}
                   {mat.colors.length === 0 && <span style={{ fontSize:11, color:'#dc2626' }}>색상을 1개 이상 추가하세요</span>}
@@ -254,7 +254,7 @@ function MethodSettingCard({
 
           {/* 품질 & 보정값 */}
           <div>
-            <div style={secTitle}>⚙️ 품질 &amp; 보정값 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
+            <div style={secTitle}>품질 &amp; 보정값 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
             {cfg.qualities.map((q, i) => (
               <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
                 <input value={q.name} onChange={e => updQualName(i, e.target.value)} placeholder="품질명"
@@ -264,7 +264,7 @@ function MethodSettingCard({
                   <input type="number" step="0.1" min={0} value={q.factor}
                     onChange={e => updQualFactor(i, e.target.value)} style={{ ...inpS, width:64 }} />
                 </div>
-                <button onClick={() => removeQual(i)} title="품질 삭제" style={delBtn}>✕</button>
+                <button onClick={() => removeQual(i)} title="품질 삭제" style={delBtn}>×</button>
               </div>
             ))}
             <div style={{ display:'flex', gap:6, marginTop:4 }}>
@@ -380,7 +380,7 @@ export default function AdminPage() {
       })
       const json = await res.json()
       if (!json.ok && json.error) throw new Error(json.error)
-      alert('✅ 설정이 저장되었습니다. 고객 견적 페이지에 즉시 반영됩니다.')
+      alert('설정이 저장되었습니다. 고객 견적 페이지에 즉시 반영됩니다.')
       loadSettings()
     } catch(e:any) { alert('오류: ' + e.message) }
     finally { setSavingSettings(false) }
@@ -531,7 +531,6 @@ export default function AdminPage() {
   if (!authed) return (
     <div style={{ maxWidth:400, margin:'80px auto', padding:24 }}>
       <div style={{ textAlign:'center', marginBottom:32 }}>
-        <div style={{ fontSize:36, marginBottom:8 }}>🔐</div>
         <h2 style={{ fontSize:20, fontWeight:700 }}>관리자 로그인</h2>
         <p style={{ color:'#6b7280', marginTop:4 }}>3D 프린팅 견적 관리 시스템</p>
       </div>
@@ -581,11 +580,11 @@ export default function AdminPage() {
             {sel.status === 'shipped' && (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 <div style={{ fontSize:13, color:'#15803d', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'9px 12px' }}>
-                  ✓ 모든 단계가 완료되었습니다.
+                  모든 단계가 완료되었습니다.
                 </div>
                 <button onClick={createAS} disabled={loading}
                   style={{ ...S.sBtn, color:'#b45309', border:'1.5px solid #fcd34d', background:'#fffbeb', width:'100%', justifyContent:'center' }}>
-                  🛠 A/S 접수 (동일 내용 새 견적 생성)
+                  A/S 접수 (동일 내용 새 견적 생성)
                 </button>
               </div>
             )}
@@ -607,7 +606,7 @@ export default function AdminPage() {
                 </button>
                 <button onClick={()=>{ setIssueDraft((sel.issue_note as string)||''); setShowIssueForm(true) }} disabled={loading}
                   style={{ ...S.sBtn, color:'#dc2626', border:'1.5px solid #fca5a5', width:'100%', justifyContent:'center' }}>
-                  ⚠️ 문제 상황 접수
+                  문제 상황 접수
                 </button>
               </div>
             )}
@@ -690,6 +689,7 @@ export default function AdminPage() {
           <Info label="이름" value={`${sel.name} (${sel.company||'개인'})`} />
           <Info label="이메일" value={sel.email} />
           {sel.phone && <Info label="연락처" value={sel.phone} />}
+          {sel.address && <Info label="수령 주소" value={sel.address} />}
           <Info label="마케팅 활용 동의" value={sel.marketing_consent ? '동의' : '미동의'} />
         </Section>
         <Section title="업로드 파일">
@@ -700,7 +700,7 @@ export default function AdminPage() {
                 style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:6,
                   padding:'7px 14px', background:'#2563eb', color:'#fff', border:'none',
                   borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                ⬇ 다운로드
+                다운로드
               </button>
             )}
           </div>
@@ -751,10 +751,10 @@ export default function AdminPage() {
           </div>
           <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
             <button style={{ ...S.btn, background:'#fff', color:'#dc2626', border:'1.5px solid #fca5a5' }}
-              onClick={()=>decide('rejected')} disabled={loading}>✕ 거절</button>
+              onClick={()=>decide('rejected')} disabled={loading}>거절</button>
             <button style={{ ...S.btn, background:'#16a34a', color:'#fff' }}
               onClick={()=>decide('approved')} disabled={loading}>
-              {loading?'처리 중...':'✓ 승인 및 이메일 발송'}
+              {loading?'처리 중...':'승인 및 이메일 발송'}
             </button>
           </div>
         </Section>
@@ -794,7 +794,7 @@ export default function AdminPage() {
                 } catch(e:any) { alert('오류: '+e.message) }
               }}
                 style={{ marginTop:8, padding:'8px 16px', background:'#dc2626', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                💾 문제 상황 저장
+                문제 상황 저장
               </button>
             </div>
           )}
@@ -807,18 +807,18 @@ export default function AdminPage() {
   return (
     <div style={S.wrap}>
       <div style={{ marginBottom:20 }}>
-        <h1 style={{ fontSize:20, fontWeight:700, marginBottom:16 }}>🗂 견적 관리 대시보드</h1>
+        <h1 style={{ fontSize:20, fontWeight:700, marginBottom:16 }}>견적 관리 대시보드</h1>
         <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'2px solid #e5e7eb' }}>
           <button onClick={()=>setTab('quotes')} style={{
             padding:'10px 20px', background:'none', border:'none',
             borderBottom: tab==='quotes'?'3px solid #2563eb':'3px solid transparent',
             color: tab==='quotes'?'#2563eb':'#6b7280', fontSize:14, fontWeight:700, cursor:'pointer'
-          }}>📋 견적 목록</button>
+          }}>견적 목록</button>
           <button onClick={()=>{ setTab('settings'); if(!editSettings) loadSettings() }} style={{
             padding:'10px 20px', background:'none', border:'none',
             borderBottom: tab==='settings'?'3px solid #2563eb':'3px solid transparent',
             color: tab==='settings'?'#2563eb':'#6b7280', fontSize:14, fontWeight:700, cursor:'pointer'
-          }}>⚙️ 견적 옵션 설정</button>
+          }}>견적 옵션 설정</button>
         </div>
       </div>
 
@@ -950,12 +950,12 @@ export default function AdminPage() {
                   padding:'10px 24px', background: savingSettings?'#9ca3af':'#2563eb', color:'#fff',
                   border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor: savingSettings?'wait':'pointer'
                 }}>
-                  {savingSettings ? '저장 중...' : '💾 저장'}
+                  {savingSettings ? '저장 중...' : '저장'}
                 </button>
               </div>
 
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:13, color:'#1e40af' }}>
-                ℹ️ 저장 즉시 고객 견적 페이지에 반영됩니다. 비활성화된 방식은 고객에게 표시되지 않습니다.
+                ℹ저장 즉시 고객 견적 페이지에 반영됩니다. 비활성화된 방식은 고객에게 표시되지 않습니다.
               </div>
 
               {(['FDM','SLA','SLS','MJF'] as const).map(method => (
