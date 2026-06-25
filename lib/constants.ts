@@ -51,6 +51,7 @@ export type Quote = {
   email: string
   company?: string
   phone?: string
+  address?: string
   file_name?: string
   file_path?: string
   vol_cm3?: number
