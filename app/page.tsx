@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { METHODS, calcDays, krw, calcPriceV2, normalizeSettings, defaultSettings, defaultMethodCfg } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_YEARS } from '@/lib/constants'
 import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
@@ -424,6 +424,10 @@ export default function Home() {
   const [customer, setCustomer] = useState<CustomerForm>({name:'',email:'',company:'',phone:''})
   const [items, setItems]     = useState<FileItem[]>([])
   const [drag, setDrag]       = useState(false)
+  const [agreePrivacy, setAgreePrivacy]     = useState(false)
+  const [agreeMarketing, setAgreeMarketing] = useState(false)
+  const [showPrivacyBox, setShowPrivacyBox]     = useState(false)
+  const [showMarketingBox, setShowMarketingBox] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── 설정 로드 (페이지 시작 시) ──
@@ -452,6 +456,7 @@ export default function Home() {
   const totalPrice = items.reduce((sum,it)=> sum + (it.vol ? calcPriceV2(it.vol, it.density, getMethodCfg(options,it.method).coefficient, it.qty, it.factor) : 0), 0)
 
   const submit = async () => {
+    if (!agreePrivacy) { alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.'); return }
     setLoading(true)
     try {
       const primary = items[0]
@@ -473,6 +478,8 @@ export default function Home() {
         auto_price: primaryPrice,
         sizeX: primary.sizeX||0, sizeY: primary.sizeY||0, sizeZ: primary.sizeZ||0,
         fileName: primary.file.name,
+        privacy_consent: true,
+        marketing_consent: agreeMarketing,
       }
       const res = await fetch('/api/quotes', {
         method: 'POST', headers: { 'Content-Type':'application/json' },
@@ -521,7 +528,7 @@ export default function Home() {
           담당자 검토 후 <b>1~2 영업일 이내</b> 최종 견적을 안내드립니다.<br/>
           <span style={{fontSize:13,color:'#9ca3af'}}>견적 번호: {done}</span>
         </p>
-        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:''});setItems([])}}>새 견적 요청</button>
+        <button style={S.sBtn} onClick={()=>{setDone(null);setStep(1);setCustomer({name:'',email:'',company:'',phone:''});setItems([]);setAgreePrivacy(false);setAgreeMarketing(false)}}>새 견적 요청</button>
       </div></div>
     </div>
   )
@@ -652,13 +659,59 @@ export default function Home() {
               </div>
             )}
 
-            <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:20,alignItems:'flex-start'}}>
+            <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:16,alignItems:'flex-start'}}>
               <span>⚠️</span><span>위 금액은 자동 계산 예상 견적입니다. 담당자 검토 후 <b>확정 견적을 이메일로 안내</b>드립니다.</span>
+            </div>
+
+            {/* 개인정보 수집·이용 동의 */}
+            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  <input type="checkbox" checked={agreePrivacy} onChange={e=>setAgreePrivacy(e.target.checked)}
+                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                  <span><span style={{color:'#dc2626'}}>[필수]</span> 개인정보 수집·이용에 동의합니다.</span>
+                </label>
+                <button type="button" onClick={()=>setShowPrivacyBox(v=>!v)}
+                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {showPrivacyBox?'접기':'자세히'}
+                </button>
+              </div>
+              {showPrivacyBox && (
+                <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
+                  <div><b>· 수집·이용 목적:</b> 3D 프린팅 견적 상담, 제작 및 출력물 배송, 견적 진행 안내(이메일·문자) 발송</div>
+                  <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 업로드한 3D 모델 파일 및 견적 정보</div>
+                  <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_YEARS}년 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
+                  <div><b>· 동의 거부 권리:</b> 동의를 거부할 권리가 있으며, 거부 시 견적 서비스 이용이 제한될 수 있습니다.</div>
+                </div>
+              )}
+            </div>
+
+            {/* 광고·마케팅 활용 동의 (선택) */}
+            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:20}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
+                  <input type="checkbox" checked={agreeMarketing} onChange={e=>setAgreeMarketing(e.target.checked)}
+                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                  <span><span style={{color:'#6b7280'}}>[선택]</span> 광고·마케팅 활용에 동의합니다.</span>
+                </label>
+                <button type="button" onClick={()=>setShowMarketingBox(v=>!v)}
+                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {showMarketingBox?'접기':'자세히'}
+                </button>
+              </div>
+              {showMarketingBox && (
+                <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
+                  <div><b>· 목적:</b> 신제품·할인·이벤트 등 광고성 정보 안내(이메일·문자)</div>
+                  <div><b>· 항목:</b> 이름, 이메일, 연락처</div>
+                  <div><b>· 보유·이용 기간:</b> 동의 철회 시까지 (최대 견적 정보 보유기간과 동일)</div>
+                  <div><b>· 미동의하셔도 견적 서비스 이용에는 제한이 없습니다.</b></div>
+                </div>
+              )}
             </div>
 
             <div style={{display:'flex',justifyContent:'space-between'}}>
               <button style={S.sBtn} onClick={()=>setStep(2)}>← 이전</button>
-              <button style={{...S.btn,background:loading?'#9ca3af':'#16a34a',color:'#fff',cursor:loading?'wait':'pointer'}} onClick={submit} disabled={loading}>
+              <button style={{...S.btn,background:(loading||!agreePrivacy)?'#9ca3af':'#16a34a',color:'#fff',cursor:loading?'wait':(!agreePrivacy?'not-allowed':'pointer')}} onClick={submit} disabled={loading||!agreePrivacy}>
                 {loading?'제출 중...':'✓ 견적 요청 제출'}
               </button>
             </div>
