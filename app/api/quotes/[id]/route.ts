@@ -137,10 +137,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     // ── 견적 삭제(소프트) ──
     if (action === 'soft_delete') {
+      const reason = (body.reason || '').trim()
       // deleted_at 먼저 기록 (필수) — 컬럼 없으면 마이그레이션 안내
+      const update: any = { deleted_at: new Date().toISOString() }
+      if (reason) update.admin_note = [quote.admin_note, reason].filter(Boolean).join(' | ')
       const { error: delErr } = await supabaseAdmin
         .from('quotes')
-        .update({ deleted_at: new Date().toISOString() })
+        .update(update)
         .eq('id', params.id)
       if (delErr) {
         return NextResponse.json({
