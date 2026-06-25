@@ -83,6 +83,18 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
+    // 동의 값 저장 — 컬럼 없을 수 있어 best-effort
+    {
+      const { error: consentErr } = await supabaseAdmin
+        .from('quotes')
+        .update({
+          privacy_consent: body.privacy_consent === true,
+          marketing_consent: body.marketing_consent === true,
+        })
+        .eq('id', data.id)
+      if (consentErr) console.warn('[API] 동의값 저장 생략(컬럼 누락 가능):', consentErr.message)
+    }
+
     // ── 고객 접수 확인 이메일 ──────────────────────────
     const fromEmail = process.env.FROM_EMAIL!
     const adminEmail = process.env.ADMIN_EMAIL!
