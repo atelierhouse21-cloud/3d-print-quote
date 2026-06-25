@@ -68,34 +68,29 @@ export async function POST(req: NextRequest) {
       file_path = storage_path
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('quotes')
-      .insert({
-        quote_no, name, email, company, phone, note,
-        method, material, color, quality, qty, infill,
-        vol_cm3: vol, file_name, file_path, auto_price,
-        size_x: parseFloat(body.sizeX) || null,
-        size_y: parseFloat(body.sizeY) || null,
-        size_z: parseFloat(body.sizeZ) || null,
-        status: 'pending',
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    // 동의 값 저장 — 컬럼 없을 수 있어 best-effort
-    {
-      const { error: consentErr } = await supabaseAdmin
-        .from('quotes')
-        .update({
-          privacy_consent: body.privacy_consent === true,
-          marketing_consent: body.marketing_consent === true,
-          address,
-        })
-        .eq('id', data.id)
-      if (consentErr) console.warn('[API] 동의/주소 저장 생략(컬럼 누락 가능):', consentErr.message)
+    const baseRow: any = {
+      quote_no, name, email, company, phone, note,
+      method, material, color, quality, qty, infill,
+      vol_cm3: vol, file_name, file_path, auto_price,
+      size_x: parseFloat(body.sizeX) || null,
+      size_y: parseFloat(body.sizeY) || null,
+      size_z: parseFloat(body.sizeZ) || null,
+      status: 'pending',
     }
+    const fullRow = {
+      ...baseRow,
+      address,
+      privacy_consent: body.privacy_consent === true,
+      marketing_consent: body.marketing_consent === true,
+    }
+
+    // 동의·주소까지 포함해 한 번에 저장 시도. 컬럼이 없으면 기본 필드만으로 재시도(견적 생성은 보장).
+    let { data, error } = await supabaseAdmin.from('quotes').insert(fullRow).select().single()
+    if (error) {
+      console.warn('[API] 동의/주소 포함 저장 실패 → 기본 필드로 재시도(마이그레이션 필요):', error.message)
+      ;({ data, error } = await supabaseAdmin.from('quotes').insert(baseRow).select().single())
+    }
+    if (error) throw error
 
     // ── 고객 접수 확인 이메일 ──────────────────────────
     const fromEmail = process.env.FROM_EMAIL!
