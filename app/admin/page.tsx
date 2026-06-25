@@ -291,7 +291,7 @@ export default function AdminPage() {
   const [sel, setSel]               = useState<Quote | null>(null)
   const [loading, setLoading]       = useState(false)
   const [aForm, setAForm]           = useState({ price:'', days:'', note:'' })
-  const [filter, setFilter]         = useState<'all'|'pending'|'approved'|'rejected'|'deleted'>('all')
+  const [filter, setFilter]         = useState<'all'|'pending'|'approved'|'rejected'|'shipped'|'as'|'deleted'>('all')
   const [tab, setTab]               = useState<'quotes'|'settings'>('quotes')
   const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
@@ -420,13 +420,20 @@ export default function AdminPage() {
 
   const activeQuotes  = quotes.filter(q => !q.deleted_at)
   const deletedQuotes = quotes.filter(q => !!q.deleted_at)
-  const filtered = filter === 'deleted'
-    ? deletedQuotes
-    : activeQuotes.filter(q => filter === 'all' || q.status === filter)
+  const isAS = (q: Quote) => /AS\d+$/i.test(q.quote_no)
+  const filtered =
+    filter === 'deleted' ? deletedQuotes :
+    filter === 'as'      ? activeQuotes.filter(isAS) :
+    filter === 'shipped' ? activeQuotes.filter(q => q.status === 'shipped') :
+    filter === 'all'     ? activeQuotes :
+                           activeQuotes.filter(q => q.status === filter)
   const counts = {
+    all:      activeQuotes.length,
     pending:  activeQuotes.filter(q=>q.status==='pending').length,
     approved: activeQuotes.filter(q=>q.status==='approved').length,
     rejected: activeQuotes.filter(q=>q.status==='rejected').length,
+    shipped:  activeQuotes.filter(q=>q.status==='shipped').length,
+    as:       activeQuotes.filter(isAS).length,
     deleted:  deletedQuotes.length,
   }
 
@@ -643,6 +650,19 @@ export default function AdminPage() {
         )}
       </Section>
 
+      {sel.as_origin && (
+        <Section title="원본(직전) 처리 정보 — A/S" style={{ marginBottom:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+            <Info label="원본 견적번호" value={sel.as_origin.quote_no || '-'} />
+            <Info label="원본 확정금액" value={sel.as_origin.final_price ? krw(sel.as_origin.final_price) : '-'} />
+            <Info label="원본 확정납기" value={sel.as_origin.final_days || '-'} />
+            <Info label="원본 배송사"   value={sel.as_origin.shipping_company || '-'} />
+            <Info label="원본 송장번호" value={sel.as_origin.tracking_number || '-'} bold />
+            <Info label="원본 발송시각" value={fmtStageTime(sel.as_origin.shipped_at) || '-'} />
+          </div>
+        </Section>
+      )}
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
         <Section title="고객 정보">
           <Info label="이름" value={`${sel.name} (${sel.company||'개인'})`} />
@@ -794,18 +814,17 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
-            <div style={{ display:'flex', gap:4, background:'#f3f4f6', padding:3, borderRadius:10, width:'fit-content' }}>
-              {(['all','pending','approved','rejected','deleted'] as const).map(f => (
-                <button key={f} onClick={()=>setFilter(f)} style={{
-                  padding:'6px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
-                  background: filter===f?'#fff':'transparent',
-                  color: filter===f ? (f==='deleted'?'#dc2626':'#1a1a1a') : '#6b7280',
-                  boxShadow: filter===f?'0 1px 3px rgba(0,0,0,.1)':'none',
-                }}>
-                  {f==='all'?'전체':f==='deleted'?'🗑 삭제':BADGE_LABEL[f]} {f!=='all'&&`(${counts[f]})`}
-                </button>
-              ))}
-            </div>
+            <select value={filter} onChange={e=>setFilter(e.target.value as typeof filter)}
+              style={{ padding:'9px 14px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:14, fontWeight:600,
+                background:'#fff', cursor:'pointer', minWidth:170, color: filter==='deleted'?'#dc2626':'#1a1a1a' }}>
+              <option value="all">전체 ({counts.all})</option>
+              <option value="pending">검토중 ({counts.pending})</option>
+              <option value="approved">승인됨 ({counts.approved})</option>
+              <option value="rejected">거절됨 ({counts.rejected})</option>
+              <option value="shipped">완료 ({counts.shipped})</option>
+              <option value="as">A/S ({counts.as})</option>
+              <option value="deleted">삭제 ({counts.deleted})</option>
+            </select>
             {filter !== 'deleted' && (
               <button onClick={bulkDelete} disabled={loading || selectedIds.length===0}
                 style={{
@@ -815,7 +834,7 @@ export default function AdminPage() {
                   background: selectedIds.length===0 ? '#fafafa' : '#fef2f2',
                   color: selectedIds.length===0 ? '#9ca3af' : '#dc2626',
                 }}>
-                🗑 선택 삭제{selectedIds.length>0 ? ` (${selectedIds.length})` : ''}
+                선택 삭제{selectedIds.length>0 ? ` (${selectedIds.length})` : ''}
               </button>
             )}
           </div>
