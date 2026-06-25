@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, RETENTION_MS } from '@/lib/constants'
+import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS } from '@/lib/constants'
 import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 const S: Record<string, React.CSSProperties> = {
@@ -141,12 +141,15 @@ function MethodSettingCard({
   const addMat = () => {
     const n = newMat.trim(); if (!n) return
     if (cfg.materials.some(x => x.name === n)) { alert('이미 있는 소재입니다.'); return }
-    setMaterials([...cfg.materials, { name:n, density: DEFAULT_DENSITY[n] ?? 1.0, colors: [] }]); setNewMat('')
+    setMaterials([...cfg.materials, { name:n, density: DEFAULT_DENSITY[n] ?? 1.0, coefficient: DEFAULT_COEFF[method] ?? 1000, colors: [] }]); setNewMat('')
   }
   const removeMat = (i: number) => setMaterials(cfg.materials.filter((_, idx) => idx !== i))
   const updMatName = (i: number, name: string) => setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, name } : x))
   const updMatDensity = (i: number, val: string) => {
     const v = parseFloat(val); setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, density: isNaN(v) ? 0 : v } : x))
+  }
+  const updMatCoeff = (i: number, val: string) => {
+    const v = parseFloat(val); setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, coefficient: isNaN(v) ? 0 : v } : x))
   }
   const addColor = (i: number) => {
     const c = (newColorFor[i] || '').trim(); if (!c) return
@@ -197,31 +200,26 @@ function MethodSettingCard({
 
       {cfg.enabled && (
         <div style={{ padding:'16px 18px' }}>
-          {/* 단가 계수 */}
+          {/* 소재 & 색상 & 단가계수 */}
           <div style={{ marginBottom:18 }}>
-            <div style={secTitle}>단가 계수 (관리자 설정 값)</div>
-            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <input type="number" step="1" min={0} value={cfg.coefficient}
-                onChange={e => onChange(method, { ...cfg, coefficient: parseFloat(e.target.value) || 0 })}
-                style={{ ...inpS, width:120, fontWeight:700 }} />
-              <span style={{ fontSize:12, color:'#6b7280' }}>
-                예상금액 = 부피 × 밀도 × <b>단가계수</b> × 수량 × 품질보정값
-              </span>
-            </div>
-          </div>
-
-          {/* 소재 & 색상 */}
-          <div style={{ marginBottom:18 }}>
-            <div style={secTitle}>소재 &amp; 밀도 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
+            <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
+            <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 10px' }}>
+              예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값
+            </p>
             {cfg.materials.map((mat, i) => (
               <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#fff' }}>
-                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
                   <input value={mat.name} onChange={e => updMatName(i, e.target.value)} placeholder="소재명"
-                    style={{ ...inpS, flex:1, minWidth:0, fontWeight:600 }} />
+                    style={{ ...inpS, flex:1, minWidth:90, fontWeight:600 }} />
                   <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
                     <span style={{ fontSize:11, color:'#6b7280' }}>밀도</span>
                     <input type="number" step="0.01" min={0} value={mat.density}
-                      onChange={e => updMatDensity(i, e.target.value)} style={{ ...inpS, width:64 }} />
+                      onChange={e => updMatDensity(i, e.target.value)} style={{ ...inpS, width:60 }} />
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                    <span style={{ fontSize:11, color:'#6b7280' }}>단가계수</span>
+                    <input type="number" step="1" min={0} value={mat.coefficient}
+                      onChange={e => updMatCoeff(i, e.target.value)} style={{ ...inpS, width:80, fontWeight:700 }} />
                   </div>
                   <button onClick={() => removeMat(i)} title="소재 삭제" style={delBtn}>×</button>
                 </div>
@@ -354,11 +352,11 @@ export default function AdminPage() {
     // 검증: 활성 방식별로 단가계수·소재·색상·품질 확인
     for (const [method, cfg] of Object.entries(editSettings) as [string, MethodCfg][]) {
       if (!cfg.enabled) continue
-      if (!cfg.coefficient || cfg.coefficient <= 0) { alert(`${method}: 단가 계수를 0보다 크게 입력하세요.`); return }
       if (!cfg.materials.length) { alert(`${method}: 소재를 최소 1개 추가하세요.`); return }
       for (const mat of cfg.materials) {
         if (!mat.name.trim())      { alert(`${method}: 소재명을 입력하세요.`); return }
         if (!mat.density || mat.density <= 0) { alert(`${method} · ${mat.name}: 밀도를 0보다 크게 입력하세요.`); return }
+        if (!mat.coefficient || mat.coefficient <= 0) { alert(`${method} · ${mat.name}: 단가계수를 0보다 크게 입력하세요.`); return }
         if (!mat.colors.length)    { alert(`${method} · ${mat.name}: 색상을 최소 1개 추가하세요.`); return }
       }
       if (!cfg.qualities.length) { alert(`${method}: 품질을 최소 1개 추가하세요.`); return }
@@ -943,7 +941,7 @@ export default function AdminPage() {
                 <div>
                   <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>출력 방식별 옵션 설정</h2>
                   <p style={{ fontSize:13, color:'#6b7280', marginTop:4 }}>
-                    방식별 단가 계수, 소재별 밀도·색상, 품질별 보정값을 직접 추가/삭제합니다.
+                    소재별 단가계수·밀도·색상, 품질별 보정값을 직접 추가/삭제합니다.
                   </p>
                 </div>
                 <button onClick={saveSettings} disabled={savingSettings} style={{
