@@ -89,12 +89,12 @@ export type Quote = {
 // ═══════════════════════════════════════════════════════════════
 // v2 옵션 모델 (소재별 밀도·색상 / 품질별 보정값 / 방식별 단가계수)
 // ═══════════════════════════════════════════════════════════════
-export type MaterialCfg = { name: string; density: number; colors: string[] }
+export type MaterialCfg = { name: string; density: number; coefficient: number; colors: string[] }
 export type QualityCfg  = { name: string; factor: number }
-export type MethodCfg   = { enabled: boolean; coefficient: number; materials: MaterialCfg[]; qualities: QualityCfg[] }
+export type MethodCfg   = { enabled: boolean; materials: MaterialCfg[]; qualities: QualityCfg[] }
 export type PrintOptions = Record<string, MethodCfg>
 
-// 방식별 기본 단가 계수 (관리자 설정 값) — 관리자가 조정 가능
+// 소재별 기본 단가 계수 (관리자 설정 값) — 관리자가 조정 가능
 export const DEFAULT_COEFF: Record<string, number> = { FDM: 2000, SLA: 3600, SLS: 5600, MJF: 7600 }
 
 // 소재별 기본 밀도(g/cm³ 근사) — 목록에 없으면 1.0
@@ -113,11 +113,12 @@ export const COURIERS: string[] = [
 
 // 방식 1개의 기본 설정 생성
 export function defaultMethodCfg(method: string): MethodCfg {
+  const coeff = DEFAULT_COEFF[method] ?? 1000
   const materials: MaterialCfg[] = (MATS[method] || []).map(name => ({
-    name, density: DEFAULT_DENSITY[name] ?? 1.0, colors: [...(COLS[method] || [])],
+    name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, colors: [...(COLS[method] || [])],
   }))
   const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m }))
-  return { enabled: true, coefficient: DEFAULT_COEFF[method] ?? 1000, materials, qualities }
+  return { enabled: true, materials, qualities }
 }
 
 // 전체 기본 설정
@@ -150,25 +151,26 @@ export function normalizeSettings(data: any): PrintOptions {
 
     if (matsAreObjects && qualsAreObjects) {
       // 이미 신버전
+      const methodCoeff = typeof cur.coefficient === 'number' ? cur.coefficient : (DEFAULT_COEFF[m] ?? 1000)
       r[m] = {
         enabled: cur.enabled !== false,
-        coefficient: typeof cur.coefficient === 'number' ? cur.coefficient : (DEFAULT_COEFF[m] ?? 1000),
         materials: cur.materials.map((x: any) => ({
           name: String(x.name),
           density: Number(x.density) || 1.0,
+          coefficient: Number(x.coefficient) || methodCoeff,
           colors: Array.isArray(x.colors) ? x.colors.map(String) : [],
         })),
         qualities: cur.qualities.map((x: any) => ({ name: String(x.name), factor: Number(x.factor) || 1.0 })),
       }
     } else {
       // 구버전(colors[], materials[], qualities[]) → 신버전 변환
+      const methodCoeff = typeof cur.coefficient === 'number' ? cur.coefficient : (DEFAULT_COEFF[m] ?? 1000)
       const oldColors: string[] = Array.isArray(cur.colors) ? cur.colors : (COLS[m] || [])
       const oldMats: string[]   = Array.isArray(cur.materials) ? cur.materials : (MATS[m] || [])
       const oldQuals: string[]  = Array.isArray(cur.qualities) ? cur.qualities : (QUAL[m] || []).map(q => q.v)
       r[m] = {
         enabled: cur.enabled !== false,
-        coefficient: typeof cur.coefficient === 'number' ? cur.coefficient : (DEFAULT_COEFF[m] ?? 1000),
-        materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, colors: [...oldColors] })),
+        materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, colors: [...oldColors] })),
         qualities: oldQuals.map(name => {
           const f = (QUAL[m] || []).find(q => q.v === name)
           return { name, factor: f ? f.m : 1.0 }
