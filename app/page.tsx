@@ -625,6 +625,7 @@ export default function Home() {
                   <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 수령(배송) 주소, 업로드한 3D 모델 파일 및 견적 정보</div>
                   <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_YEARS}년 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
                   <div><b>· 동의 거부 권리:</b> 동의를 거부할 권리가 있으며, 거부 시 견적 서비스 이용이 제한될 수 있습니다.</div>
+                  <div style={{marginTop:6}}><a href="/privacy" target="_blank" rel="noopener noreferrer" style={{color:'#2563eb',textDecoration:'underline'}}>개인정보처리방침 전문 보기</a></div>
                 </div>
               )}
             </div>
@@ -645,7 +646,7 @@ export default function Home() {
               {showMarketingBox && (
                 <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
                   <div><b>· 목적:</b> 신제품·할인·이벤트 등 광고성 정보 안내(이메일·문자), 작업 내용(제작물)을 자사 광고·홍보에 활용</div>
-                  <div><b>· 항목:</b> 이름, 이메일, 연락처</div>
+                  <div><b>· 항목:</b> 이름, 작업 내용(사진)</div>
                   <div><b>· 보유·이용 기간:</b> 동의 철회 시까지 (최대 견적 정보 보유기간과 동일)</div>
                   <div><b>· 미동의하셔도 견적 서비스 이용에는 제한이 없습니다.</b></div>
                 </div>
@@ -656,7 +657,9 @@ export default function Home() {
               <button style={{...S.btn,background:'#2563eb',color:'#fff'}}
                 onClick={()=>{
                   if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}
+                  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email.trim())){alert('이메일 형식이 올바르지 않습니다.');return}
                   if(!customer.phone.trim()){alert('연락처는 필수입니다.');return}
+                  if(!/^0\d{8,10}$/.test(customer.phone.replace(/[^0-9]/g,''))){alert('연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)');return}
                   if(!customer.address.trim()){alert('수령 주소는 필수입니다.');return}
                   if(!agreePrivacy){alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.');return}
                   setStep(2)
@@ -774,8 +777,7 @@ function Logo() {
   return (
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
       <div>
-        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>3D 프린팅 견적 시스템</div>
-        <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>FDM · SLA/DLP · SLS · MJF — 자동 견적 + 담당자 확인</div>
+        <div style={{fontSize:20,fontWeight:700,letterSpacing:-.5}}>아틀리에 하우스 3D 프린팅 견적 시스템</div>
       </div>
     </div>
   )
