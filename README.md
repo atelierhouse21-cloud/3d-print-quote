@@ -1,95 +1,151 @@
-# 🖨️ 3D 프린팅 견적 시스템 — 설치 및 배포 가이드
+# 아틀리에 하우스 3D 프린팅 견적 시스템
 
-지금부터 **계정 가입 → 코드 업로드 → 배포** 순서로 진행합니다.
-모든 과정은 약 **30~40분** 소요됩니다.
+고객이 3D 모델 파일을 올려 **자동 예상 견적**을 받고, 관리자가 검토·확정·제작·배송까지 단계별로 처리하는 웹 시스템입니다. 고객 안내 메일은 각 단계에서 자동 발송됩니다.
 
----
-
-## 1단계 — 계정 3개 만들기
-
-아래 사이트에 순서대로 가입합니다 (모두 무료).
-
-| 서비스 | 주소 | 역할 |
-|--------|------|------|
-| **GitHub** | https://github.com | 코드 저장소 |
-| **Vercel** | https://vercel.com | 사이트 배포 (GitHub으로 로그인) |
-| **Supabase** | https://supabase.com | 데이터베이스 + 파일 저장 |
-| **Resend** | https://resend.com | 이메일 자동 발송 |
+- 고객 견적 페이지: `/`
+- 관리자 페이지: `/admin`
+- 개인정보처리방침: `/privacy`
 
 ---
 
-## 2단계 — Supabase 설정
+## 1. 기술 스택
 
-1. supabase.com 로그인 → **New Project** 클릭
-2. 프로젝트 이름 입력 (예: `3d-print-quote`), 지역: **Northeast Asia (Seoul)**
-3. 생성 완료 후 좌측 메뉴 **SQL Editor** 클릭
-4. `supabase/schema.sql` 파일 전체 내용을 복사해서 붙여넣고 **Run** 클릭
-5. 좌측 메뉴 **Project Settings → API** 에서 아래 3가지를 메모장에 복사:
-   - `Project URL` → NEXT_PUBLIC_SUPABASE_URL
-   - `anon public` key → NEXT_PUBLIC_SUPABASE_ANON_KEY
-   - `service_role` key → SUPABASE_SERVICE_ROLE_KEY
-
----
-
-## 3단계 — Resend 설정 (이메일)
-
-1. resend.com 로그인 → **API Keys** → **Create API Key**
-2. 생성된 키 (`re_...`) 를 메모장에 복사 → RESEND_API_KEY
-3. **Domains** 탭 → 도메인이 없으면 일단 `onboarding@resend.dev` 를 FROM_EMAIL로 사용 (무료, 하루 100건)
+| 구분 | 사용 기술 | 역할 |
+|------|-----------|------|
+| 프레임워크 | Next.js 14 (App Router) + TypeScript | 웹 페이지 + API |
+| 데이터베이스 | Supabase (PostgreSQL) | 견적 데이터 저장 |
+| 파일 저장 | Supabase Storage (`quote-files` 버킷) | 업로드된 3D 파일 |
+| 이메일 | Resend | 접수·단계별 안내 메일 |
+| 주소 검색 | 다음(카카오) 우편번호 서비스 | 무료, API 키 불필요 |
+| 배포 | Vercel | 사이트 호스팅 + 예약작업(Cron) |
 
 ---
 
-## 4단계 — GitHub에 코드 올리기
+## 2. 주요 기능
 
-1. github.com → 우측 상단 **+** → **New repository**
-2. Repository name: `3d-print-quote` → **Create repository**
-3. 컴퓨터에 이 폴더 전체를 드래그해서 업로드 (또는 git push)
-   - GitHub 페이지에서 **uploading an existing file** 링크 클릭
-   - 이 폴더 안의 **모든 파일을 선택**해서 드래그 업로드
-   - **Commit changes** 클릭
+### 고객 견적 페이지 (`/`)
+- **3단계 진행**: 고객 정보 입력 → 파일 & 설정 → 견적 확인
+- **STL 업로드**: 드래그앤드롭/파일 선택(모바일 포함), 부피·크기 자동 분석
+- **자동 예상 견적**: `부피 × 밀도 × 단가계수(소재별) × 수량 × 품질보정값` (100원 단위 반올림)
+- 파일마다 출력 방식·소재·색상·품질·수량과 **요청사항**을 개별 입력
+- **수령 주소 검색**: 우편번호 서비스로 도로명 주소 검색 + 상세주소 입력
+- **개인정보 수집 동의(필수)** / **광고·마케팅 활용 동의(선택)** — 첫 단계에서 체크, 미동의 시 진행 불가
+- 이메일·연락처 형식 검증, 모바일 반응형
+
+### 관리자 페이지 (`/admin`)
+- 비밀번호 로그인
+- **견적 목록**: 드롭다운 필터(전체/검토중/승인됨/거절됨/완료/A·S/삭제) + **검색**(견적번호·이름·이메일·업체·연락처) + **더 보기**(페이지네이션)
+- **단계별 처리(가이드 버튼)**: 검토중 → 견적확정 → 결제확인 → 출력중 → 후처리 → 배송준비 → 발송완료
+- 각 단계 **처리 시각** 기록(마일스톤에 `YYMMDD_HH:MM:SS` 표시)
+- **견적 확정**: 금액·납기 입력 후 고객에게 확정 메일 발송
+- **발송 처리**: 국내 택배사 선택 + 송장번호 입력 → 고객 메일에 배송사·송장 포함
+- **문제 상황 접수**: 내용을 작성해 접수하면 그 내용이 고객 메일에 포함
+- **A/S 접수**: 발송완료 건에서 동일 내용의 새 견적 생성(견적번호 뒤 `AS01`, `AS02`…), 원본 처리 정보(배송사·송장·확정금액 등) 스냅샷 보존
+- **삭제**: 카드 좌측 체크박스로 다중 선택 후 일괄 삭제(소프트 삭제 — 파일 제거 + 요약 보관). '삭제' 탭에서 요약 확인
+- **마케팅 동의 여부** 배지 표시
+- **견적 옵션 설정**: 방식별 활성/비활성, **소재별 밀도·단가계수·색상**, **품질별 보정값**을 직접 추가/삭제
+
+### 개인정보 보호
+- 동의 고지(목적·항목·보유기간·거부권) + 개인정보처리방침 페이지(`/privacy`)
+- **보유기간: 견적 요청일로부터 3년** (`lib/constants.ts`의 `RETENTION_YEARS`로 조정)
+- 만료 건 자동 삭제: 관리자 접속 시 + **매일 예약작업(Cron)**으로 실행, "개인정보 보관기간 만료로 인한 자동 삭제" 메모 기록
 
 ---
 
-## 5단계 — Vercel 배포
-
-1. vercel.com 로그인 (GitHub으로 로그인 권장)
-2. **Add New → Project** → GitHub 저장소 `3d-print-quote` 선택 → **Import**
-3. **Environment Variables** 섹션에서 아래 항목을 하나씩 추가:
+## 3. 폴더 구조
 
 ```
-NEXT_PUBLIC_SUPABASE_URL        = https://xxxxxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY   = eyJ...
-SUPABASE_SERVICE_ROLE_KEY       = eyJ...
-RESEND_API_KEY                  = re_...
-ADMIN_EMAIL                     = 내_이메일@gmail.com
-ADMIN_PASSWORD                  = 관리자페이지비밀번호
-FROM_EMAIL                      = onboarding@resend.dev
-NEXT_PUBLIC_SITE_URL            = (배포 후 Vercel이 알려주는 URL, 처음엔 비워도 됨)
+app/
+  page.tsx                  고객 견적 페이지
+  admin/page.tsx            관리자 페이지
+  privacy/page.tsx          개인정보처리방침
+  layout.tsx                공통 레이아웃
+  api/
+    quotes/route.ts         견적 접수(POST) / 목록(GET)
+    quotes/[id]/route.ts    상태변경·승인·발송·문제접수·A/S·삭제(PATCH)
+    settings/route.ts       옵션 설정 조회(GET, 공개) / 저장(POST, 관리자)
+    admin/download/route.ts 파일 다운로드(관리자)
+    cron/purge/route.ts     보유기간 만료 자동 삭제(예약작업)
+lib/
+  constants.ts              타입·가격식·옵션 모델·보유기간 등
+  supabase.ts               Supabase 클라이언트
+  admin-auth.ts             관리자 인증(상수시간 비교·시도 제한)
+supabase/
+  schema.sql                기본 스키마
+  migration_all.sql         (별도 보관 시) 모든 컬럼 보장 + 유니크 제약
+vercel.json                 예약작업(Cron) 설정
 ```
 
-4. **Deploy** 클릭 → 2~3분 후 완료
-5. 완료되면 Vercel이 URL을 알려줍니다 (예: `https://3d-print-quote.vercel.app`)
+---
+
+## 4. 환경 변수
+
+Vercel 프로젝트 설정(Environment Variables)에 등록합니다.
+
+| 변수 | 설명 |
+|------|------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon 키 |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role 키(서버 전용) |
+| `RESEND_API_KEY` | Resend API 키 |
+| `FROM_EMAIL` | 발신 이메일 주소(Resend 인증 도메인) |
+| `ADMIN_EMAIL` | 새 견적 알림을 받을 관리자 이메일 |
+| `ADMIN_PASSWORD` | 관리자 페이지 로그인 비밀번호 |
+| `NEXT_PUBLIC_SITE_URL` | 사이트 주소(메일 링크용) |
+| `CRON_SECRET` | (권장) 예약작업 호출 보호용 토큰 |
 
 ---
 
-## 완성 후 URL 구조
+## 5. 데이터베이스 설정
 
-| 페이지 | 주소 | 용도 |
-|--------|------|------|
-| 고객 견적 요청 | `https://your-url.vercel.app` | 고객에게 이 링크를 공유 |
-| 관리자 대시보드 | `https://your-url.vercel.app/admin` | 사장님만 접근 (비밀번호 보호) |
+Supabase 대시보드 → SQL Editor에서 실행합니다.
 
----
+1. `supabase/schema.sql` — 기본 테이블/스토리지/정책
+2. `supabase/migration_all.sql` — 코드가 사용하는 **모든 컬럼 보장** + 견적번호 유니크 제약 (`IF NOT EXISTS` 라 여러 번 실행해도 안전)
 
-## 이후 운영 방법
+> 마케팅 동의·주소가 비어 보이면 대부분 관련 컬럼이 없어서입니다. 위 통합 마이그레이션을 실행하면 해결됩니다.
 
-- 고객에게 메인 URL을 문자/카카오톡/이메일로 보내면 됩니다
-- 견적이 접수되면 관리자 이메일로 알림이 옵니다
-- `/admin` 페이지에서 승인/거절 시 고객에게 자동으로 이메일이 발송됩니다
-- 무료 플랜 기준 **월 비용 0원**으로 운영 가능합니다
+**주요 컬럼**: `final_price`, `final_days`, `shipping_company`, `tracking_number`, `issue_note`, `size_x/y/z`, `stage_times`(jsonb), `deleted_at`, `as_origin`(jsonb), `privacy_consent`, `marketing_consent`, `address`. 견적번호 중복 방지를 위해 `quote_no` 유니크 인덱스를 둡니다.
 
 ---
 
-## 문의 / 문제 발생 시
+## 6. 배포
 
-각 단계에서 막히면 해당 화면을 캡처해서 Claude에게 보여주세요.
+1. GitHub 저장소에 코드 푸시
+2. Vercel에서 저장소 연결 → 위 환경 변수 등록 → 배포
+3. Supabase에서 SQL(스키마 + 통합 마이그레이션) 실행
+4. Resend에서 발신 도메인 인증, `FROM_EMAIL` 설정
+5. 코드 수정 후에는 GitHub에 커밋하면 Vercel이 자동 재배포
+
+예약작업(자동 삭제)은 `vercel.json`의 설정으로 매일 1회(`0 18 * * *`, UTC 18시 = KST 03시) 실행됩니다.
+
+---
+
+## 7. 운영 가이드
+
+- **옵션·단가 설정**: 관리자 → '견적 옵션 설정'에서 방식 활성화, 소재별 밀도·단가계수·색상, 품질별 보정값을 입력 후 저장하면 고객 페이지에 즉시 반영됩니다.
+- **가격 조정**: 전체 금액이 크거나 작으면 소재별 단가계수만 조정하면 비례해서 바뀝니다. 확정 금액은 담당자가 최종 입력합니다.
+- **견적 처리 흐름**: 목록에서 건을 열어 가이드 버튼으로 단계를 진행하면, 각 단계마다 고객에게 안내 메일이 자동 발송됩니다.
+- **A/S**: 발송완료 건에서 'A/S 접수'를 누르면 동일 내용의 검토중 견적이 새 번호로 생성됩니다.
+- **삭제/보관**: 삭제는 소프트 삭제로 처리되어 '삭제' 탭에 요약이 남고 업로드 파일은 제거됩니다. 보유기간(3년) 만료 건은 자동 삭제됩니다.
+
+---
+
+## 8. 보안 참고
+
+- 관리자 인증: 비밀번호 **상수시간 비교** + 실패 시 지연 + 시도 횟수 제한(무차별 대입 완화). 더 강력한 분산 차단이 필요하면 외부 저장소 기반으로 확장 가능
+- 이메일에 들어가는 고객 입력값은 **이스케이프 처리**(주입 방지)
+- 견적번호는 **유니크 제약 + 충돌 시 재시도**로 중복 방지
+- 개인정보처리방침은 표준 양식 기반 예시이므로 실제 운영 정보(상호·연락처·대표자 등)로 보완 필요
+
+---
+
+## 9. 로컬 개발
+
+```bash
+npm install
+# .env.local 에 위 환경 변수 작성
+npm run dev      # 개발 서버
+npm run build    # 배포 빌드
+npm start        # 빌드 결과 실행
+```
