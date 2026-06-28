@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/admin-auth'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { Resend } from 'resend'
+
+// 이메일 HTML 사용자 입력값 이스케이프(주입 방지)
+const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string))
 import { krw } from '@/lib/constants'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -13,7 +17,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">결제 확인 완료</h2>
-          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
           <p style="margin-bottom:20px;">결제가 정상적으로 확인되었습니다. 곧 작업을 시작하겠습니다.</p>
           <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px 16px;font-size:13px;color:#14532d;">
             <b>견적 번호:</b> ${quote.quote_no}<br/>
@@ -27,12 +31,12 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">출력 작업 진행 중</h2>
-          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
           <p style="margin-bottom:20px;">3D 프린팅 출력 작업이 진행 중입니다.</p>
           <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:12px 16px;font-size:13px;color:#1e40af;">
             <b>견적 번호:</b> ${quote.quote_no}<br/>
-            <b>출력 방식:</b> ${quote.method}<br/>
-            <b>예상 완료:</b> ${quote.final_days || '영업일 기준'}
+            <b>출력 방식:</b> ${esc(quote.method)}<br/>
+            <b>예상 완료:</b> ${esc(quote.final_days) || '영업일 기준'}
           </div>
         </div>
       `
@@ -42,7 +46,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">후처리 작업 중</h2>
-          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
           <p style="margin-bottom:20px;">3D 출력이 완료되었습니다. 현재 표면 처리 및 마감 작업을 진행하고 있습니다.</p>
           <div style="background:#fef3f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;font-size:13px;color:#991b1b;">
             <b>견적 번호:</b> ${quote.quote_no}<br/>
@@ -56,7 +60,7 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">배송 준비 중</h2>
-          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
           <p style="margin-bottom:20px;">모든 작업이 완료되었습니다. 현재 배송 준비 중이며, 발송 후 송장번호를 안내드리겠습니다.</p>
           <div style="background:#f0fdfa;border:1px solid #5eead4;border-radius:8px;padding:12px 16px;font-size:13px;color:#134e4a;">
             <b>견적 번호:</b> ${quote.quote_no}<br/>
@@ -70,11 +74,11 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">문제 상황 접수</h2>
-          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
           <p style="margin-bottom:20px;">주문하신 제품에 문제가 발생하여 확인 중입니다. 빠른 시일 내에 해결 방안을 안내드리겠습니다.</p>
           <div style="background:#fef2f2;border:2px solid #ef4444;border-radius:8px;padding:16px;font-size:14px;color:#991b1b;">
             <div style="font-weight:700;margin-bottom:8px;">견적 번호: ${quote.quote_no}</div>
-            ${issueNote ? `<div style="margin-bottom:8px;white-space:pre-wrap;"><b>문제 내용:</b> ${issueNote}</div>` : ''}
+            ${issueNote ? `<div style="margin-bottom:8px;white-space:pre-wrap;"><b>문제 내용:</b> ${esc(issueNote)}</div>` : ''}
             <div>담당자가 확인 후 개별 연락드리겠습니다.</div>
           </div>
           <p style="margin-top:16px;font-size:13px;color:#6b7280;">문의사항은 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a>으로 연락 주시기 바랍니다.</p>
@@ -86,16 +90,16 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">발송 완료</h2>
-          <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+          <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
           <p style="margin-bottom:20px;">제품 발송이 완료되었습니다. 아래 정보로 배송 조회가 가능합니다.</p>
           <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;padding:16px;font-size:14px;color:#14532d;">
             <div style="display:grid;grid-template-columns:100px 1fr;gap:12px;margin-bottom:12px;">
               <div style="color:#6b7280;font-weight:600;">배송사</div>
-              <div style="font-weight:700;">${shippingCompany || '-'}</div>
+              <div style="font-weight:700;">${esc(shippingCompany) || '-'}</div>
             </div>
             <div style="display:grid;grid-template-columns:100px 1fr;gap:12px;">
               <div style="color:#6b7280;font-weight:600;">송장번호</div>
-              <div style="font-size:18px;font-weight:800;color:#15803d;">${trackingNumber || '-'}</div>
+              <div style="font-size:18px;font-weight:800;color:#15803d;">${esc(trackingNumber) || '-'}</div>
             </div>
           </div>
           <p style="margin-top:16px;font-size:13px;color:#6b7280;">택배사 홈페이지에서 배송 현황을 확인하실 수 있습니다.</p>
@@ -108,10 +112,8 @@ function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: str
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const pw = req.headers.get('x-admin-password')
-    if (pw !== process.env.ADMIN_PASSWORD) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireAdmin(req)
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const supabaseAdmin = getSupabaseAdmin()
     const body = await req.json()
     const { action } = body
@@ -264,12 +266,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
             <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">견적 확정 안내</h2>
-            <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+            <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
             <p style="margin-bottom:20px;">요청하신 견적이 확정되었습니다.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
               <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;">${quote.quote_no}</td></tr>
               <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">확정 금액</td><td style="padding:10px 0;font-weight:700;font-size:18px;color:#15803d;">${krw(finalPrice)} (VAT 별도)</td></tr>
-              <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;font-weight:600;">${finalDays}</td></tr>
+              <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;font-weight:600;">${esc(finalDays)}</td></tr>
             </table>
             <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
               입금 확인 후 작업을 시작합니다.
@@ -301,7 +303,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
             <h2 style="font-size:20px;margin:0 0 16px;color:#1a1a1a;">견적 요청 결과</h2>
-            <p style="margin-bottom:16px;">안녕하세요 <b>${quote.name}</b>님,</p>
+            <p style="margin-bottom:16px;">안녕하세요 <b>${esc(quote.name)}</b>님,</p>
             <p style="margin-bottom:20px;">요청하신 견적 건(${quote.quote_no})은 현재 진행이 어려운 상황입니다.</p>
             <p style="color:#6b7280;font-size:13px;">문의사항이 있으시면 <a href="mailto:atelierhuse21@gmail.com" style="color:#2563eb;font-weight:600;text-decoration:none;">atelierhuse21@gmail.com</a>으로 연락 주시기 바랍니다.</p>
           </div>
