@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/admin-auth'
 import { getSupabaseAdmin } from '@/lib/supabase'
 
 // GET: 설정 조회
@@ -28,10 +29,8 @@ export async function GET(req: NextRequest) {
 // POST: 설정 업데이트 (관리자만)
 export async function POST(req: NextRequest) {
   try {
-    const pw = req.headers.get('x-admin-password')
-    if (pw !== process.env.ADMIN_PASSWORD) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireAdmin(req)
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     
     const supabaseAdmin = getSupabaseAdmin()
     const body = await req.json()
