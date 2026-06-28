@@ -273,8 +273,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
               <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">확정 금액</td><td style="padding:10px 0;font-weight:700;font-size:18px;color:#15803d;">${krw(finalPrice)} (VAT 별도)</td></tr>
               <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;font-weight:600;">${esc(finalDays)}</td></tr>
             </table>
-            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
-              입금 확인 후 작업을 시작합니다.
+            <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;font-size:14px;color:#0c4a6e;margin-bottom:12px;">
+              <div style="font-weight:700;margin-bottom:10px;">입금 안내</div>
+              <p style="margin:0 0 12px;color:#0369a1;">위 확정 금액을 아래 계좌로 이체해 주시기 바랍니다. 입금이 확인되면 작업이 진행됩니다.</p>
+              <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:6px;">
+                <tr><td style="padding:8px 12px;color:#6b7280;width:90px;">예금주</td><td style="padding:8px 12px;font-weight:600;">하창호</td></tr>
+                <tr><td style="padding:8px 12px;color:#6b7280;">은행</td><td style="padding:8px 12px;font-weight:600;">기업은행</td></tr>
+                <tr><td style="padding:8px 12px;color:#6b7280;">계좌번호</td><td style="padding:8px 12px;font-weight:700;">617-056957-01-013</td></tr>
+              </table>
             </div>
           </div>
         `,
