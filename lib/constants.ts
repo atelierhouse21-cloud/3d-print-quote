@@ -20,7 +20,7 @@ export const COLS: Record<string, string[]> = {
 }
 
 export const QUAL: Record<string, { v: string; m: number }[]> = {
-  FDM: [{ v: 'Draft (0.3mm)', m: 0.7 }, { v: 'Standard (0.2mm)', m: 1.0 }, { v: 'Fine (0.1mm)', m: 1.5 }, { v: 'Ultra (0.05mm)', m: 2.2 }],
+  FDM: [{ v: 'Draft (0.3mm)', m: 0.7 }, { v: 'Standard (0.2mm layer, 15% infill)', m: 1.0 }, { v: 'Fine (0.1mm)', m: 1.5 }, { v: 'Ultra (0.05mm layer, 45% infill)', m: 2.2 }],
   SLA: [{ v: 'Standard (0.1mm)', m: 1.0 }, { v: 'Fine (0.05mm)', m: 1.8 }],
   SLS: [{ v: 'Standard (0.1mm)', m: 1.0 }],
   MJF: [{ v: 'Standard (0.08mm)', m: 1.0 }, { v: 'Fine (0.04mm)', m: 1.5 }],
@@ -89,7 +89,7 @@ export type Quote = {
 // ═══════════════════════════════════════════════════════════════
 // v2 옵션 모델 (소재별 밀도·색상 / 품질별 보정값 / 방식별 단가계수)
 // ═══════════════════════════════════════════════════════════════
-export type MaterialCfg = { name: string; density: number; coefficient: number; colors: string[] }
+export type MaterialCfg = { name: string; density: number; coefficient: number; minPrice: number; colors: string[] }
 export type QualityCfg  = { name: string; factor: number }
 export type MethodCfg   = { enabled: boolean; materials: MaterialCfg[]; qualities: QualityCfg[] }
 export type PrintOptions = Record<string, MethodCfg>
@@ -115,7 +115,7 @@ export const COURIERS: string[] = [
 export function defaultMethodCfg(method: string): MethodCfg {
   const coeff = DEFAULT_COEFF[method] ?? 1000
   const materials: MaterialCfg[] = (MATS[method] || []).map(name => ({
-    name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, colors: [...(COLS[method] || [])],
+    name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, minPrice: 0, colors: [...(COLS[method] || [])],
   }))
   const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m }))
   return { enabled: true, materials, qualities }
@@ -158,6 +158,7 @@ export function normalizeSettings(data: any): PrintOptions {
           name: String(x.name),
           density: Number(x.density) || 1.0,
           coefficient: Number(x.coefficient) || methodCoeff,
+          minPrice: Number(x.minPrice) || 0,
           colors: Array.isArray(x.colors) ? x.colors.map(String) : [],
         })),
         qualities: cur.qualities.map((x: any) => ({ name: String(x.name), factor: Number(x.factor) || 1.0 })),
@@ -170,7 +171,7 @@ export function normalizeSettings(data: any): PrintOptions {
       const oldQuals: string[]  = Array.isArray(cur.qualities) ? cur.qualities : (QUAL[m] || []).map(q => q.v)
       r[m] = {
         enabled: cur.enabled !== false,
-        materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, colors: [...oldColors] })),
+        materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, minPrice: 0, colors: [...oldColors] })),
         qualities: oldQuals.map(name => {
           const f = (QUAL[m] || []).find(q => q.v === name)
           return { name, factor: f ? f.m : 1.0 }
