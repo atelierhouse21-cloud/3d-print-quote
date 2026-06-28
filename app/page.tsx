@@ -221,7 +221,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 type FileItem = {
   id:string; file:File
   vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null
-  method:string; material:string; density:number; coefficient:number; color:string; quality:string; factor:number
+  method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number
   qty:number; note:string
 }
 type CustomerForm = { name:string; email:string; company:string; phone:string; address:string; addressDetail:string }
@@ -245,6 +245,13 @@ function getEnabledMethods(options: PrintOptions): [string, typeof METHODS[strin
   return Object.entries(METHODS).filter(([k]) => options[k]?.enabled !== false)
 }
 
+// 한 파일(라인)의 예상 금액: 가격식 결과에 소재별 최소 금액을 하한으로 적용
+function linePrice(it: FileItem): number {
+  if (!it.vol) return 0
+  const p = calcPriceV2(it.vol, it.density, it.coefficient, it.qty, it.factor)
+  return Math.max(p, it.minPrice || 0)
+}
+
 // ── FileItem 초기값 (설정 기반) ───────────────────────
 function newFileItem(file: File, options: PrintOptions): FileItem {
   const enabledMethods = getEnabledMethods(options)
@@ -260,6 +267,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
     material: mat?.name || '',
     density:  mat?.density || 1.0,
     coefficient: mat?.coefficient || 1000,
+    minPrice: mat?.minPrice || 0,
     color:    colors[0] || '',
     quality:  quals[0]?.name || '',
     factor:   quals[0]?.factor || 1.0,
@@ -304,6 +312,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
     onChange(item.id, 'material', mat?.name || '')
     onChange(item.id, 'density',  mat?.density || 1.0)
     onChange(item.id, 'coefficient', mat?.coefficient || 1000)
+    onChange(item.id, 'minPrice', mat?.minPrice || 0)
     onChange(item.id, 'color',    mat?.colors?.[0] || '')
     onChange(item.id, 'quality',  quals[0]?.name || '')
     onChange(item.id, 'factor',   quals[0]?.factor || 1.0)
@@ -314,11 +323,12 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
     onChange(item.id, 'material', name)
     onChange(item.id, 'density',  mat?.density || 1.0)
     onChange(item.id, 'coefficient', mat?.coefficient || 1000)
+    onChange(item.id, 'minPrice', mat?.minPrice || 0)
     onChange(item.id, 'color',    mat?.colors?.[0] || '')
   }
 
   const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
-  const price = item.vol ? calcPriceV2(item.vol, item.density, item.coefficient, item.qty, item.factor) : 0
+  const price = linePrice(item)
 
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
@@ -409,6 +419,11 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
             <span style={{fontSize:11,color:'#6b7280'}}>예상 금액 (VAT 별도)</span>
             <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(price):'담당자 산출'}</span>
           </div>
+          {item.minPrice > 0 && (
+            <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>
+              이 소재의 최소 견적 금액은 {krw(item.minPrice)} 입니다.
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -482,7 +497,7 @@ export default function Home() {
   }
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
-  const totalPrice = items.reduce((sum,it)=> sum + (it.vol ? calcPriceV2(it.vol, it.density, it.coefficient, it.qty, it.factor) : 0), 0)
+  const totalPrice = items.reduce((sum,it)=> sum + linePrice(it), 0)
 
   const submit = async () => {
     if (!agreePrivacy) { alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.'); return }
@@ -490,7 +505,7 @@ export default function Home() {
     try {
       const primary = items[0]
       const primaryPrice = primary.vol
-        ? calcPriceV2(primary.vol, primary.density, primary.coefficient, primary.qty, primary.factor)
+        ? linePrice(primary)
         : null
       // 파일별 사양 + 요청사항을 하나의 note로 합침
       const finalNote = items.map((it,i)=>{
@@ -729,7 +744,7 @@ export default function Home() {
                     <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
                     <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
                   </div>
-                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(calcPriceV2(item.vol,item.density,item.coefficient,item.qty,item.factor)):'담당자 산출'}</span>
+                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(linePrice(item)):'담당자 산출'}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
