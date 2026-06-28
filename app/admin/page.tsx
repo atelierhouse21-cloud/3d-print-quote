@@ -296,6 +296,8 @@ export default function AdminPage() {
   const [showIssueForm, setShowIssueForm] = useState(false)
   const [issueDraft, setIssueDraft]     = useState('')
   const [selectedIds, setSelectedIds]   = useState<string[]>([])
+  const [search, setSearch]             = useState('')
+  const [visibleCount, setVisibleCount] = useState(30)
 
   const fetchQuotes = async (pw: string) => {
     const res = await fetch('/api/quotes', { headers: { 'x-admin-password': pw } })
@@ -456,6 +458,13 @@ export default function AdminPage() {
     as:       activeQuotes.filter(isAS).length,
     deleted:  deletedQuotes.length,
   }
+  // 검색(견적번호·이름·이메일·업체명·연락처) + 페이지네이션
+  const kw = search.trim().toLowerCase()
+  const searched = kw
+    ? filtered.filter(q => [q.quote_no, q.name, q.email, q.company, q.phone]
+        .some(v => (v || '').toLowerCase().includes(kw)))
+    : filtered
+  const pageItems = searched.slice(0, visibleCount)
 
   // ── 선택 삭제(소프트) ──
   const toggleSelect = (id: string) =>
@@ -835,17 +844,22 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
-            <select value={filter} onChange={e=>setFilter(e.target.value as typeof filter)}
-              style={{ padding:'9px 14px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:14, fontWeight:600,
-                background:'#fff', cursor:'pointer', minWidth:170, color: filter==='deleted'?'#dc2626':'#1a1a1a' }}>
-              <option value="all">전체 ({counts.all})</option>
-              <option value="pending">검토중 ({counts.pending})</option>
-              <option value="approved">승인됨 ({counts.approved})</option>
-              <option value="rejected">거절됨 ({counts.rejected})</option>
-              <option value="shipped">완료 ({counts.shipped})</option>
-              <option value="as">A/S ({counts.as})</option>
-              <option value="deleted">삭제 ({counts.deleted})</option>
-            </select>
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+              <select value={filter} onChange={e=>{ setFilter(e.target.value as typeof filter); setVisibleCount(30) }}
+                style={{ padding:'9px 14px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:14, fontWeight:600,
+                  background:'#fff', cursor:'pointer', minWidth:150, color: filter==='deleted'?'#dc2626':'#1a1a1a' }}>
+                <option value="all">전체 ({counts.all})</option>
+                <option value="pending">검토중 ({counts.pending})</option>
+                <option value="approved">승인됨 ({counts.approved})</option>
+                <option value="rejected">거절됨 ({counts.rejected})</option>
+                <option value="shipped">완료 ({counts.shipped})</option>
+                <option value="as">A/S ({counts.as})</option>
+                <option value="deleted">삭제 ({counts.deleted})</option>
+              </select>
+              <input value={search} onChange={e=>{ setSearch(e.target.value); setVisibleCount(30) }}
+                placeholder="견적번호·이름·이메일·업체·연락처 검색"
+                style={{ padding:'9px 12px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:13, minWidth:220 }} />
+            </div>
             {filter !== 'deleted' && (
               <button onClick={bulkDelete} disabled={loading || selectedIds.length===0}
                 style={{
@@ -861,14 +875,14 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {filtered.length === 0 && (
+            {searched.length === 0 && (
               <div style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>
-                {filter==='deleted' ? '삭제된 견적이 없습니다' : '견적 요청이 없습니다'}
+                {kw ? '검색 결과가 없습니다' : (filter==='deleted' ? '삭제된 견적이 없습니다' : '견적 요청이 없습니다')}
               </div>
             )}
 
             {/* 활성 견적 — 좌측 체크박스 선택, 클릭=상세 */}
-            {filter !== 'deleted' && filtered.map(q => {
+            {filter !== 'deleted' && pageItems.map(q => {
               const checked = selectedIds.includes(q.id)
               return (
                 <div key={q.id} style={{
@@ -908,7 +922,7 @@ export default function AdminPage() {
             })}
 
             {/* 삭제된 견적 — 요약·읽기전용·파일 제외 */}
-            {filter === 'deleted' && deletedQuotes.map(q => (
+            {filter === 'deleted' && pageItems.map(q => (
               <div key={q.id} style={{ padding:'12px 16px', background:'#fafafa', border:'1px solid #e5e7eb', borderRadius:12 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
                   <span style={{ fontWeight:700, fontSize:14, color:'#6b7280' }}>{q.quote_no}</span>
@@ -926,6 +940,14 @@ export default function AdminPage() {
                 {q.admin_note && <div style={{ fontSize:11, color:'#b45309', marginTop:3 }}>사유: {q.admin_note}</div>}
               </div>
             ))}
+
+            {searched.length > visibleCount && (
+              <button onClick={()=>setVisibleCount(v=>v+30)}
+                style={{ marginTop:6, padding:'10px 0', borderRadius:10, border:'1.5px solid #d1d5db', background:'#fff',
+                  fontSize:13, fontWeight:600, cursor:'pointer', color:'#374151' }}>
+                더 보기 ({searched.length - visibleCount}건 남음)
+              </button>
+            )}
           </div>
         </>
       )}
