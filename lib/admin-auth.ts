@@ -5,7 +5,7 @@ import crypto from 'crypto'
 // 실패 지연과 함께 무차별 대입을 의미 있게 늦춰줍니다.
 const attempts = new Map<string, { count: number; first: number }>()
 const WINDOW_MS = 10 * 60 * 1000
-const MAX_FAILS = 10
+const MAX_FAILS = 5
 
 function clientIp(req: NextRequest): string {
   return (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()) || 'unknown'
