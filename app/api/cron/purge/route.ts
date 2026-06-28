@@ -1,50 +1,51 @@
-import { NextRequest } from 'next/server'
-import crypto from 'crypto'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { RETENTION_MS } from '@/lib/constants'
 
-// 메모리 기반 실패 카운터(웜 인스턴스 한정) — 분산 환경에선 완전하지 않지만
-// 실패 지연과 함께 무차별 대입을 의미 있게 늦춰줍니다.
-const attempts = new Map<string, { count: number; first: number }>()
-const WINDOW_MS = 10 * 60 * 1000
-const MAX_FAILS = 10
-
-function clientIp(req: NextRequest): string {
-  return (req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()) || 'unknown'
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a)
-  const bb = Buffer.from(b)
-  if (ab.length !== bb.length) return false
-  try { return crypto.timingSafeEqual(ab, bb) } catch { return false }
-}
-
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-
-export type AuthResult = { ok: true } | { ok: false; status: number; error: string }
-
-// 관리자 인증: 비밀번호 상수시간 비교 + 실패 지연 + 시도 횟수 제한
-export async function requireAdmin(req: NextRequest): Promise<AuthResult> {
-  const ip = clientIp(req)
-  const now = Date.now()
-  const rec = attempts.get(ip)
-
-  if (rec && now - rec.first < WINDOW_MS && rec.count >= MAX_FAILS) {
-    await sleep(800)
-    return { ok: false, status: 429, error: '로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.' }
+// 보유기간 만료 견적 자동 삭제 (Vercel Cron 으로 매일 호출).
+// CRON_SECRET 이 설정돼 있으면 해당 토큰이 있는 요청만 허용합니다.
+export async function GET(req: NextRequest) {
+  const secret = process.env.CRON_SECRET
+  if (secret) {
+    const authH = req.headers.get('authorization') || ''
+    if (authH !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
 
-  const pw = req.headers.get('x-admin-password') || ''
-  const expected = process.env.ADMIN_PASSWORD || ''
+  const supabaseAdmin = getSupabaseAdmin()
+  const cutoff = new Date(Date.now() - RETENTION_MS).toISOString()
 
-  if (expected && safeEqual(pw, expected)) {
-    attempts.delete(ip)
-    return { ok: true }
+  const { data, error } = await supabaseAdmin
+    .from('quotes')
+    .select('id, file_path, admin_note')
+    .is('deleted_at', null)
+    .lt('created_at', cutoff)
+
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+
+  const reason = '개인정보 보관기간 만료로 인한 자동 삭제'
+  let deleted = 0
+  for (const q of data || []) {
+    try {
+      if (q.file_path) {
+        const { error: rmErr } = await supabaseAdmin.storage.from('quote-files').remove([q.file_path])
+        if (rmErr) console.warn('[CRON] 파일 삭제 생략:', rmErr.message)
+      }
+      const { error: upErr } = await supabaseAdmin
+        .from('quotes')
+        .update({
+          deleted_at: new Date().toISOString(),
+          admin_note: [q.admin_note, reason].filter(Boolean).join(' | '),
+        })
+        .eq('id', q.id)
+      if (upErr) { console.warn('[CRON] 삭제 표기 실패:', upErr.message); continue }
+      deleted++
+    } catch (e: any) {
+      console.warn('[CRON] 처리 중 오류:', e?.message)
+    }
   }
 
-  // 실패: 지연 + 카운트 증가
-  await sleep(600)
-  const base = rec && now - rec.first < WINDOW_MS ? rec : { count: 0, first: now }
-  base.count += 1
-  attempts.set(ip, base)
-  return { ok: false, status: 401, error: '인증 실패' }
+  console.log('[CRON] 만료 자동 삭제 완료:', deleted, '건')
+  return NextResponse.json({ ok: true, deleted })
 }
