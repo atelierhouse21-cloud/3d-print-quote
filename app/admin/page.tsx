@@ -141,7 +141,7 @@ function MethodSettingCard({
   const addMat = () => {
     const n = newMat.trim(); if (!n) return
     if (cfg.materials.some(x => x.name === n)) { alert('이미 있는 소재입니다.'); return }
-    setMaterials([...cfg.materials, { name:n, density: DEFAULT_DENSITY[n] ?? 1.0, coefficient: DEFAULT_COEFF[method] ?? 1000, colors: [] }]); setNewMat('')
+    setMaterials([...cfg.materials, { name:n, density: DEFAULT_DENSITY[n] ?? 1.0, coefficient: DEFAULT_COEFF[method] ?? 1000, minPrice: 0, colors: [] }]); setNewMat('')
   }
   const removeMat = (i: number) => setMaterials(cfg.materials.filter((_, idx) => idx !== i))
   const updMatName = (i: number, name: string) => setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, name } : x))
@@ -150,6 +150,9 @@ function MethodSettingCard({
   }
   const updMatCoeff = (i: number, val: string) => {
     const v = parseFloat(val); setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, coefficient: isNaN(v) ? 0 : v } : x))
+  }
+  const updMatMinPrice = (i: number, val: string) => {
+    const v = parseFloat(val); setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, minPrice: isNaN(v) ? 0 : v } : x))
   }
   const addColor = (i: number) => {
     const c = (newColorFor[i] || '').trim(); if (!c) return
@@ -202,9 +205,9 @@ function MethodSettingCard({
         <div style={{ padding:'16px 18px' }}>
           {/* 소재 & 색상 & 단가계수 */}
           <div style={{ marginBottom:18 }}>
-            <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
+            <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 최소금액 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
             <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 10px' }}>
-              예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값
+              예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값 &nbsp;|&nbsp; 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).
             </p>
             {cfg.materials.map((mat, i) => (
               <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#fff' }}>
@@ -220,6 +223,11 @@ function MethodSettingCard({
                     <span style={{ fontSize:11, color:'#6b7280' }}>단가계수</span>
                     <input type="number" step="1" min={0} value={mat.coefficient}
                       onChange={e => updMatCoeff(i, e.target.value)} style={{ ...inpS, width:80, fontWeight:700 }} />
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                    <span style={{ fontSize:11, color:'#6b7280' }}>최소금액</span>
+                    <input type="number" step="100" min={0} value={mat.minPrice}
+                      onChange={e => updMatMinPrice(i, e.target.value)} style={{ ...inpS, width:90 }} />
                   </div>
                   <button onClick={() => removeMat(i)} title="소재 삭제" style={delBtn}>×</button>
                 </div>
@@ -284,6 +292,8 @@ function MethodSettingCard({
 // ── 메인 ──
 export default function AdminPage() {
   const [password, setPassword]     = useState('')
+  const [failCount, setFailCount]   = useState(0)
+  const [locked, setLocked]         = useState(false)
   const [authed, setAuthed]         = useState(false)
   const [quotes, setQuotes]         = useState<Quote[]>([])
   const [sel, setSel]               = useState<Quote | null>(null)
@@ -305,12 +315,21 @@ export default function AdminPage() {
     return res.json() as Promise<Quote[]>
   }
 
+  const MAX_LOGIN_TRIES = 5
   const login = async () => {
+    if (locked) return
     setLoading(true)
     try {
       const data = await fetchQuotes(password)
-      setQuotes(data); setAuthed(true)
-    } catch { alert('비밀번호가 올바르지 않습니다.') }
+      setQuotes(data); setAuthed(true); setFailCount(0)
+    } catch {
+      const next = failCount + 1
+      setFailCount(next)
+      if (next >= MAX_LOGIN_TRIES) {
+        setLocked(true)
+        setTimeout(() => { setLocked(false); setFailCount(0) }, 60000)
+      }
+    }
     finally { setLoading(false) }
   }
 
@@ -547,8 +566,17 @@ export default function AdminPage() {
           <input type="password" value={password} onChange={e=>setPassword(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&login()} style={S.inp} placeholder="비밀번호 입력" autoFocus />
         </div>
-        <button style={{ ...S.btn, background:'#2563eb', color:'#fff', width:'100%', justifyContent:'center', marginTop:16 }}
-          onClick={login} disabled={loading}>
+        {locked ? (
+          <div style={{ marginTop:10, fontSize:13, color:'#dc2626', fontWeight:600 }}>
+            시도 횟수를 초과했습니다. 약 1분 후 다시 시도해 주세요.
+          </div>
+        ) : failCount > 0 ? (
+          <div style={{ marginTop:10, fontSize:13, color:'#dc2626' }}>
+            비밀번호가 올바르지 않습니다. (남은 시도: {MAX_LOGIN_TRIES - failCount}/{MAX_LOGIN_TRIES}회)
+          </div>
+        ) : null}
+        <button style={{ ...S.btn, background:(loading||locked)?'#9ca3af':'#2563eb', color:'#fff', width:'100%', justifyContent:'center', marginTop:16, cursor:(loading||locked)?'not-allowed':'pointer' }}
+          onClick={login} disabled={loading||locked}>
           {loading ? '확인 중...' : '로그인'}
         </button>
       </div></div>
