@@ -141,7 +141,7 @@ function MethodSettingCard({
   const addMat = () => {
     const n = newMat.trim(); if (!n) return
     if (cfg.materials.some(x => x.name === n)) { alert('이미 있는 소재입니다.'); return }
-    setMaterials([...cfg.materials, { name:n, density: DEFAULT_DENSITY[n] ?? 1.0, coefficient: DEFAULT_COEFF[method] ?? 1000, minPrice: 0, colors: [] }]); setNewMat('')
+    setMaterials([...cfg.materials, { name:n, density: DEFAULT_DENSITY[n] ?? 1.0, coefficient: DEFAULT_COEFF[method] ?? 1000, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [] }]); setNewMat('')
   }
   const removeMat = (i: number) => setMaterials(cfg.materials.filter((_, idx) => idx !== i))
   const updMatName = (i: number, name: string) => setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, name } : x))
@@ -153,6 +153,9 @@ function MethodSettingCard({
   }
   const updMatMinPrice = (i: number, val: string) => {
     const v = parseFloat(val); setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, minPrice: isNaN(v) ? 0 : v } : x))
+  }
+  const updMatMax = (i: number, axis: 'maxX'|'maxY'|'maxZ', val: string) => {
+    const v = parseFloat(val); setMaterials(cfg.materials.map((x, idx) => idx===i ? { ...x, [axis]: isNaN(v) ? 0 : v } : x))
   }
   const addColor = (i: number) => {
     const c = (newColorFor[i] || '').trim(); if (!c) return
@@ -230,6 +233,17 @@ function MethodSettingCard({
                       onChange={e => updMatMinPrice(i, e.target.value)} style={{ ...inpS, width:90 }} />
                   </div>
                   <button onClick={() => removeMat(i)} title="소재 삭제" style={delBtn}>×</button>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:11, color:'#6b7280', fontWeight:700 }}>최대 출력 사이즈(mm)</span>
+                  {(['maxX','maxY','maxZ'] as const).map(ax => (
+                    <div key={ax} style={{ display:'flex', alignItems:'center', gap:3 }}>
+                      <span style={{ fontSize:11, color:'#9ca3af' }}>{ax==='maxX'?'X':ax==='maxY'?'Y':'Z'}</span>
+                      <input type="number" step="1" min={0} value={mat[ax]}
+                        onChange={e => updMatMax(i, ax, e.target.value)} style={{ ...inpS, width:64 }} />
+                    </div>
+                  ))}
+                  <span style={{ fontSize:10, color:'#9ca3af' }}>0 = 무제한</span>
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
                   <span style={{ fontSize:11, color:'#9ca3af', fontWeight:700 }}>색상:</span>
