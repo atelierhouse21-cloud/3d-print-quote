@@ -66,8 +66,47 @@ function calcBBox(v: Float32Array) {
   return { x:parseFloat((x1-x0).toFixed(1)), y:parseFloat((y1-y0).toFixed(1)), z:parseFloat((z1-z0).toFixed(1)), cx:(x0+x1)/2, cy:(y0+y1)/2, cz:(z0+z1)/2 }
 }
 
+// 같은 평면/매끈한 곡면이 한 덩어리처럼 보이도록, 정점별 평균 법선(스무스 셰이딩) 계산
+function computeSmoothNormals(v: Float32Array): Float32Array {
+  const keyOf = (i: number) => `${Math.round(v[i]*1000)},${Math.round(v[i+1]*1000)},${Math.round(v[i+2]*1000)}`
+  const map = new Map<string, [number, number, number]>()
+  for (let i = 0; i < v.length; i += 9) {
+    const ax=v[i+3]-v[i], ay=v[i+4]-v[i+1], az=v[i+5]-v[i+2]
+    const bx=v[i+6]-v[i], by=v[i+7]-v[i+1], bz=v[i+8]-v[i+2]
+    const fnx=ay*bz-az*by, fny=az*bx-ax*bz, fnz=ax*by-ay*bx  // 면적 가중 법선
+    for (const j of [i, i+3, i+6]) {
+      const k = keyOf(j); const cur = map.get(k)
+      if (cur) { cur[0]+=fnx; cur[1]+=fny; cur[2]+=fnz } else map.set(k, [fnx, fny, fnz])
+    }
+  }
+  const out = new Float32Array(v.length)
+  for (let i = 0; i < v.length; i += 3) {
+    const a = map.get(keyOf(i))!
+    const l = Math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]) || 1
+    out[i]=a[0]/l; out[i+1]=a[1]/l; out[i+2]=a[2]/l
+  }
+  return out
+}
+
+// STL 내 서로 떨어진 개체(연결 요소) 수 — union-find
+function countObjects(v: Float32Array): number {
+  const id = new Map<string, number>(); let next = 0
+  const getId = (i: number) => {
+    const k = `${Math.round(v[i]*1000)},${Math.round(v[i+1]*1000)},${Math.round(v[i+2]*1000)}`
+    let x = id.get(k); if (x === undefined) { x = next++; id.set(k, x) } return x
+  }
+  const tris: [number, number, number][] = []
+  for (let i = 0; i < v.length; i += 9) tris.push([getId(i), getId(i+3), getId(i+6)])
+  const parent = new Array(next); for (let i = 0; i < next; i++) parent[i] = i
+  const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x] } return x }
+  const union = (a: number, b: number) => { const ra=find(a), rb=find(b); if (ra!==rb) parent[ra]=rb }
+  for (const t of tris) { union(t[0], t[1]); union(t[1], t[2]) }
+  const roots = new Set<number>(); for (let i = 0; i < next; i++) roots.add(find(i))
+  return roots.size
+}
+
 // ── STL 뷰어 ──────────────────────────────────────────
-type STLInfo = { x:number; y:number; z:number; volume:number }
+type STLInfo = { x:number; y:number; z:number; volume:number; objectCount:number|null }
 function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
@@ -79,6 +118,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
   const lastX = useRef(0); const lastY = useRef(0)
   const lastPinchDist = useRef(0); const touching = useRef(false)
   const vertsRef = useRef<Float32Array|null>(null)
+  const normsRef = useRef<Float32Array|null>(null)
   const bboxRef = useRef<ReturnType<typeof calcBBox>|null>(null)
   const rotY = useRef(0.4); const rotX = useRef(-0.3); const zoom = useRef(1.0)
 
@@ -90,9 +130,17 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const v = parseSTL(buf)
         const bbox = calcBBox(v)
         const volume = calcVolume(v)
-        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume }
+        const triCount = v.length / 9
+        // 큰 모델은 부담이 커서 일정 크기 이하에서만 스무스 셰이딩·개체수 계산
+        let smooth: Float32Array | null = null
+        let objectCount: number | null = null
+        if (triCount > 0 && triCount <= 200000) {
+          smooth = computeSmoothNormals(v)
+          objectCount = countObjects(v)
+        }
+        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, objectCount }
         setInfo(si); onAnalyzed(si)
-        vertsRef.current = v; bboxRef.current = bbox
+        vertsRef.current = v; normsRef.current = smooth; bboxRef.current = bbox
         rotY.current=0.4; rotX.current=-0.3; zoom.current=1.0
         setLoading(false)
       } catch { setErr(true); setLoading(false) }
@@ -118,6 +166,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
   function draw() {
     const canvas = canvasRef.current; const verts = vertsRef.current; const bbox = bboxRef.current
     if (!canvas||!verts||!bbox) return
+    const norms = normsRef.current
     const ctx = canvas.getContext('2d'); if (!ctx) return
     const W=canvas.width, H=canvas.height
     ctx.clearRect(0,0,W,H); ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,W,H)
@@ -136,14 +185,20 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
     for(let i=0;i<verts.length;i+=9){
       const ax2=verts[i+3]-verts[i],ay2=verts[i+4]-verts[i+1],az2=verts[i+5]-verts[i+2]
       const bx2=verts[i+6]-verts[i],by2=verts[i+7]-verts[i+1],bz2=verts[i+8]-verts[i+2]
-      const wnx=ay2*bz2-az2*by2,wny=az2*bx2-ax2*bz2,wnz=ax2*by2-ay2*bx2
-      const nl=Math.sqrt(wnx*wnx+wny*wny+wnz*wnz)||1
+      // 셰이딩 법선: 스무스 법선이 있으면 정점 평균(같은 평면=균일, 곡면=부드럽게), 없으면 면 법선
+      let nx:number,ny:number,nz:number
+      if(norms){
+        nx=(norms[i]+norms[i+3]+norms[i+6])/3; ny=(norms[i+1]+norms[i+4]+norms[i+7])/3; nz=(norms[i+2]+norms[i+5]+norms[i+8])/3
+      } else {
+        nx=ay2*bz2-az2*by2; ny=az2*bx2-ax2*bz2; nz=ax2*by2-ay2*bx2
+      }
+      const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1
       const p0=transform((verts[i]-cx)*scale,(verts[i+1]-cy)*scale,(verts[i+2]-cz)*scale)
       const p1=transform((verts[i+3]-cx)*scale,(verts[i+4]-cy)*scale,(verts[i+5]-cz)*scale)
       const p2=transform((verts[i+6]-cx)*scale,(verts[i+7]-cy)*scale,(verts[i+8]-cz)*scale)
       const e1x=p1.px-p0.px,e1y=p1.py-p0.py,e2x=p2.px-p0.px,e2y=p2.py-p0.py
       if(e1x*e2y-e1y*e2x>=0) continue
-      tris.push({depth:(p0.pz+p1.pz+p2.pz)/3,pts:[p0,p1,p2],wnx:wnx/nl,wny:wny/nl,wnz:wnz/nl})
+      tris.push({depth:(p0.pz+p1.pz+p2.pz)/3,pts:[p0,p1,p2],wnx:nx/nl,wny:ny/nl,wnz:nz/nl})
     }
     tris.sort((a,b)=>a.depth-b.depth)
     const L1={x:0.6,y:0.9,z:0.5},l1l=Math.sqrt(0.6**2+0.9**2+0.5**2)
@@ -155,7 +210,8 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
       const v=Math.round(105+bright*(238-105))
       const [q0,q1,q2]=t.pts
       const tcx=(q0.px+q1.px+q2.px)/3,tcy=(q0.py+q1.py+q2.py)/3
-      const ep=t.pts.map(p=>({px:tcx+(p.px-tcx)*1.008+(p.px-tcx>0?0.5:-0.5),py:tcy+(p.py-tcy)*1.008+(p.py-tcy>0?0.5:-0.5)}))
+      // 면 사이 미세 틈 방지용 최소 확장(스무스 셰이딩에서는 같은 색이라 표시 안 됨)
+      const ep=t.pts.map(p=>({px:tcx+(p.px-tcx)*1.004+(p.px-tcx>0?0.4:-0.4),py:tcy+(p.py-tcy)*1.004+(p.py-tcy>0?0.4:-0.4)}))
       ctx.beginPath(); ctx.moveTo(ep[0].px,ep[0].py); ctx.lineTo(ep[1].px,ep[1].py); ctx.lineTo(ep[2].px,ep[2].py)
       ctx.closePath(); ctx.fillStyle=`rgb(${v},${v},${v})`; ctx.fill()
     }
@@ -220,7 +276,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 // ── 타입 ──────────────────────────────────────────────
 type FileItem = {
   id:string; file:File
-  vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null
+  vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null
   method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number
   qty:number; note:string
 }
@@ -262,7 +318,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
   const quals = getQualities(options, method)
   return {
     id: Math.random().toString(36).slice(2),
-    file, vol:null, sizeX:null, sizeY:null, sizeZ:null,
+    file, vol:null, sizeX:null, sizeY:null, sizeZ:null, objectCount:null,
     method,
     material: mat?.name || '',
     density:  mat?.density || 1.0,
@@ -330,6 +386,15 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
   const price = linePrice(item)
 
+  // 선택 소재의 최대 출력 사이즈 + 초과 여부
+  const matCfg = materials.find(m => m.name === item.material)
+  const hasMax = !!matCfg && (matCfg.maxX > 0 || matCfg.maxY > 0 || matCfg.maxZ > 0)
+  const overX = !!matCfg && matCfg.maxX > 0 && item.sizeX != null && item.sizeX > matCfg.maxX
+  const overY = !!matCfg && matCfg.maxY > 0 && item.sizeY != null && item.sizeY > matCfg.maxY
+  const overZ = !!matCfg && matCfg.maxZ > 0 && item.sizeZ != null && item.sizeZ > matCfg.maxZ
+  const overSize = overX || overY || overZ
+  const multiObject = item.objectCount != null && item.objectCount > 1
+
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
       {/* 헤더 */}
@@ -348,6 +413,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
             <STLViewer height={220} file={item.file} onAnalyzed={info=>{
               onChange(item.id,'vol',info.volume)
               onChange(item.id,'sizeX',info.x); onChange(item.id,'sizeY',info.y); onChange(item.id,'sizeZ',info.z)
+              onChange(item.id,'objectCount',info.objectCount as any)
             }}/>
           </div>
         )}
@@ -422,6 +488,21 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
           {item.minPrice > 0 && (
             <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>
               이 소재의 최소 견적 금액은 {krw(item.minPrice)} 입니다.
+            </div>
+          )}
+          {hasMax && (
+            <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>
+              이 소재의 최대 출력 사이즈: {matCfg!.maxX>0?`X ${matCfg!.maxX}`:'X 무제한'} · {matCfg!.maxY>0?`Y ${matCfg!.maxY}`:'Y 무제한'} · {matCfg!.maxZ>0?`Z ${matCfg!.maxZ}`:'Z 무제한'} (mm)
+            </div>
+          )}
+          {overSize && (
+            <div style={{marginTop:8,padding:'8px 12px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,fontSize:12,color:'#b91c1c',fontWeight:600}}>
+              출력 가능 사이즈를 초과합니다. (초과: {[overX?'X':'',overY?'Y':'',overZ?'Z':''].filter(Boolean).join('·')}축) 담당자와 분할 출력 등을 상담해 주세요.
+            </div>
+          )}
+          {multiObject && (
+            <div style={{marginTop:8,padding:'8px 12px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:8,fontSize:12,color:'#92400e',fontWeight:600}}>
+              개체가 1개가 아닙니다. (이 파일에서 {item.objectCount}개의 개체가 감지되었습니다.) 개체별로 파일을 나눠 올리시면 더 정확한 견적이 가능합니다.
             </div>
           )}
         </div>
