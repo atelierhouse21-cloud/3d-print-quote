@@ -3,11 +3,21 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { calcPrice, calcDays } from '@/lib/constants'
 import { Resend } from 'resend'
+import crypto from 'crypto'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 // 이메일 HTML에 들어가는 사용자 입력값 이스케이프(주입 방지)
 const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string))
+
+// 고객 확인 번호(추측하기 어려운 10자리). 헷갈리는 문자(0,O,1,I,L) 제외.
+function genTrackingCode(): string {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+  const bytes = crypto.randomBytes(10)
+  let s = ''
+  for (let i = 0; i < 10; i++) s += alphabet[bytes[i] % alphabet.length]
+  return s
+}
 
 // 견적 번호 생성
 async function getNextQuoteNo(): Promise<string> {
@@ -95,6 +105,7 @@ export async function POST(req: NextRequest) {
         ...baseRow, address,
         privacy_consent: body.privacy_consent === true,
         marketing_consent: body.marketing_consent === true,
+        tracking_code: genTrackingCode(),
       }
 
       // 동의·주소 포함 저장 시도. 컬럼 누락 시 기본 필드로 재시도(견적 생성 보장).
@@ -140,6 +151,15 @@ export async function POST(req: NextRequest) {
             ${auto_price ? `<tr><td style="padding:10px 0;color:#6b7280;">예상 금액</td><td style="padding:10px 0;font-weight:700;font-size:16px;color:#15803d;">₩${auto_price.toLocaleString('ko-KR')} (VAT 별도)</td></tr>` : ''}
           </table>
           ${note ? `<div style="background:#f9fafb;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#374151;"><b>요청 사항:</b> ${esc(note)}</div>` : ''}
+          ${data.tracking_code ? `
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:20px;">
+            <div style="font-weight:700;color:#1e3a8a;margin-bottom:6px;">진행상황 확인 안내</div>
+            <p style="margin:0 0 10px;font-size:13px;color:#1e40af;">아래 고객 확인 번호로 작업 진행상황을 확인하실 수 있습니다. 진행상황 페이지의 입력창에 확인 번호를 입력하시면 현재 단계를 보실 수 있습니다.</p>
+            <div style="font-size:12px;color:#6b7280;">고객 확인 번호</div>
+            <div style="font-size:22px;font-weight:800;letter-spacing:2px;color:#1d4ed8;margin:2px 0 12px;">${esc(data.tracking_code)}</div>
+            <a href="${siteUrl}/track?code=${encodeURIComponent(data.tracking_code)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;">진행상황 확인하기</a>
+            <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">버튼이 열리지 않으면 다음 주소에서 확인 번호를 입력하세요: ${siteUrl}/track</p>
+          </div>` : ''}
           <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e;">
             담당자 검토 후 <b>1~2 영업일 이내</b> 최종 확정 견적을 이메일로 안내드립니다.
           </div>
