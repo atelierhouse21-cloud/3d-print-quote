@@ -5,7 +5,7 @@ import { Resend } from 'resend'
 
 // 이메일 HTML 사용자 입력값 이스케이프(주입 방지)
 const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string))
-import { krw } from '@/lib/constants'
+import { krw, priceBreakdown } from '@/lib/constants'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -270,13 +270,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             <p style="margin-bottom:20px;">요청하신 견적이 확정되었습니다.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
               <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;">${quote.quote_no}</td></tr>
-              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;">확정 금액</td><td style="padding:10px 0;font-weight:700;font-size:18px;color:#15803d;">${krw(finalPrice)} (VAT 별도)</td></tr>
-              <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;font-weight:600;">${esc(finalDays)}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">공급가</td><td style="padding:9px 0;text-align:right;">${krw(priceBreakdown(finalPrice).supply)}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">부가세 (10%)</td><td style="padding:9px 0;text-align:right;">${krw(priceBreakdown(finalPrice).vat)}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">배송비</td><td style="padding:9px 0;text-align:right;">${krw(priceBreakdown(finalPrice).shipping)}</td></tr>
+              <tr style="border-bottom:2px solid #e5e7eb;"><td style="padding:11px 0;color:#1a1a1a;font-weight:700;">합계 (VAT·배송비 포함)</td><td style="padding:11px 0;text-align:right;font-weight:800;font-size:18px;color:#15803d;">${krw(priceBreakdown(finalPrice).total)}</td></tr>
+              <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;text-align:right;font-weight:600;">${esc(finalDays)}</td></tr>
             </table>
             <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;font-size:14px;color:#0c4a6e;margin-bottom:12px;">
               <div style="font-weight:700;margin-bottom:10px;">입금 안내</div>
-              <p style="margin:0 0 12px;color:#0369a1;">위 확정 금액을 아래 계좌로 이체해 주시기 바랍니다. 입금이 확인되면 작업이 진행됩니다.</p>
-              <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:6px;">
+              <p style="margin:0 0 6px;color:#0369a1;">아래 <b>합계 금액(부가세·배송비 포함) ${krw(priceBreakdown(finalPrice).total)}</b> 을 아래 계좌로 이체해 주시기 바랍니다. 입금이 확인되면 작업이 진행됩니다.</p>
+              <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:6px;margin-top:8px;">
                 <tr><td style="padding:8px 12px;color:#6b7280;width:90px;">예금주</td><td style="padding:8px 12px;font-weight:600;">하창호</td></tr>
                 <tr><td style="padding:8px 12px;color:#6b7280;">은행</td><td style="padding:8px 12px;font-weight:600;">기업은행</td></tr>
                 <tr><td style="padding:8px 12px;color:#6b7280;">계좌번호</td><td style="padding:8px 12px;font-weight:700;">617-056957-01-013</td></tr>
