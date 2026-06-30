@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 
+// 항상 최신 상태를 반환하도록 캐시 비활성화
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // 공개 진행상황 조회: 고객 확인 번호(tracking_code)로 최소 정보만 반환.
 // 개인정보·업로드 파일은 절대 노출하지 않습니다.
 export async function GET(req: NextRequest) {
@@ -32,5 +36,5 @@ export async function GET(req: NextRequest) {
     final_days: data.final_days ?? null,
     shipping_company: data.shipping_company ?? null,
     tracking_number: data.tracking_number ?? null,
-  })
+  }, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
 }
