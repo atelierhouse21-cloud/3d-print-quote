@@ -54,6 +54,7 @@ export type Quote = {
   address?: string
   file_name?: string
   file_path?: string
+  items?: any[]
   vol_cm3?: number
   size_x?: number
   size_y?: number
@@ -133,6 +134,13 @@ export function normalizeSettings(data: any): PrintOptions {
   const ALL = Object.keys(METHODS)
   if (!data || typeof data !== 'object' || Object.keys(data).length === 0) return defaultSettings()
 
+  // 예전에 저장된 품질 라벨을 최신 라벨로 자동 치환(DB 재저장 없이도 반영)
+  const QUALITY_RENAME: Record<string, string> = {
+    'Standard (0.2mm)': 'Standard (0.2mm layer, 15% infill)',
+    'Ultra (0.05mm)':   'Ultra (0.05mm layer, 45% infill)',
+  }
+  const renameQ = (n: string) => QUALITY_RENAME[n] || n
+
   // 아주 구버전: { methods:[], qualities:[] }
   if (Array.isArray(data.methods) || Array.isArray(data.qualities)) {
     const enabled: string[] = data.methods || ALL
@@ -164,7 +172,7 @@ export function normalizeSettings(data: any): PrintOptions {
           maxZ: Number(x.maxZ) || 0,
           colors: Array.isArray(x.colors) ? x.colors.map(String) : [],
         })),
-        qualities: cur.qualities.map((x: any) => ({ name: String(x.name), factor: Number(x.factor) || 1.0 })),
+        qualities: cur.qualities.map((x: any) => ({ name: renameQ(String(x.name)), factor: Number(x.factor) || 1.0 })),
       }
     } else {
       // 구버전(colors[], materials[], qualities[]) → 신버전 변환
@@ -177,7 +185,7 @@ export function normalizeSettings(data: any): PrintOptions {
         materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...oldColors] })),
         qualities: oldQuals.map(name => {
           const f = (QUAL[m] || []).find(q => q.v === name)
-          return { name, factor: f ? f.m : 1.0 }
+          return { name: renameQ(name), factor: f ? f.m : 1.0 }
         }),
       }
     }
@@ -195,3 +203,15 @@ export function calcPriceV2(vol: number, density: number, coefficient: number, q
 // 개인정보 보유기간(년) — 견적 요청일 기준. 이 기간이 지나면 관리자 페이지에서 자동 삭제됨.
 export const RETENTION_YEARS = 3
 export const RETENTION_MS = RETENTION_YEARS * 365 * 24 * 60 * 60 * 1000
+
+// 부가세율 / 기본 배송비
+export const VAT_RATE = 0.1
+export const SHIPPING_FEE = 4500
+
+// 공급가(VAT 별도)로부터 부가세·배송비·합계 계산
+export function priceBreakdown(supply: number | null | undefined) {
+  const s = Math.round(Number(supply) || 0)
+  const vat = Math.round(s * VAT_RATE)
+  const shipping = s > 0 ? SHIPPING_FEE : 0
+  return { supply: s, vat, shipping, total: s + vat + shipping }
+}
