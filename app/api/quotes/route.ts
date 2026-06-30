@@ -60,42 +60,60 @@ export async function POST(req: NextRequest) {
 
     const isUnique = (e: any) => !!e && (e.code === '23505' || /duplicate|unique/i.test(e.message || ''))
 
+    // 업로드 파일 목록(여러 개 지원). 없으면 단일 fileName 으로 폴백.
+    const rawFiles: any[] = Array.isArray(body.files) && body.files.length
+      ? body.files
+      : (fileName ? [{ fileName, method, material, color, quality, qty, vol, sizeX: body.sizeX, sizeY: body.sizeY, sizeZ: body.sizeZ, note: '', price: auto_price }] : [])
+
     // 견적번호 생성 + 저장 (동시 접수로 번호가 겹치면 새 번호로 재시도)
     let data: any = null
     let quote_no = ''
     let file_name: string | null = null
     let storage_path: string | null = null
+    let storagePaths: string[] = []
     let lastErr: any = null
 
     for (let attempt = 0; attempt < 6; attempt++) {
       quote_no = await getNextQuoteNo()
 
-      // 파일 경로 생성 (실제 업로드는 브라우저에서 직접 처리)
-      let file_path: string | null = null
-      file_name = null
-      storage_path = null
-      if (fileName) {
-        const ext = fileName.split('.').pop()?.toLowerCase() || 'stl'
-        const now = new Date()
-        const yyyy = now.getFullYear().toString()
-        const mm   = String(now.getMonth()+1).padStart(2,'0')
-        const dd   = String(now.getDate()).padStart(2,'0')
-        const dateStr = `${yyyy}${mm}${dd}`
-        const origName = fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
-        const displayName = name.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
-        const displayOrig = origName.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
-        file_name = `${dateStr}_${quote_no}_${displayName}_${displayOrig}.${ext}`
-        const asciiName = name.replace(/[^a-zA-Z0-9_-]/g, '') || `cust${Date.now().toString().slice(-4)}`
-        const asciiOrig = origName.replace(/[^a-zA-Z0-9_-]/g, '') || `file${Date.now().toString().slice(-4)}`
-        const storageFileName = `${dateStr}_${quote_no}_${asciiName}_${asciiOrig}.${ext}`
-        storage_path = `${yyyy}/${mm}/${dd}/${quote_no}/${storageFileName}`
-        file_path = storage_path
-      }
+      const now = new Date()
+      const yyyy = now.getFullYear().toString()
+      const mm   = String(now.getMonth()+1).padStart(2,'0')
+      const dd   = String(now.getDate()).padStart(2,'0')
+      const dateStr = `${yyyy}${mm}${dd}`
+      const displayName = name.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+      const asciiName = name.replace(/[^a-zA-Z0-9_-]/g, '') || `cust${Date.now().toString().slice(-4)}`
+
+      // 파일별 정보 + 저장 경로 생성
+      const itemsData = rawFiles.map((fl: any, idx: number) => {
+        const fn = String(fl.fileName || `file${idx+1}.stl`)
+        const ext = fn.split('.').pop()?.toLowerCase() || 'stl'
+        const origName = fn.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+        const asciiOrig = origName.replace(/[^a-zA-Z0-9_-]/g, '') || `file${idx+1}`
+        const display_name = `${dateStr}_${quote_no}_${displayName}_${origName}.${ext}`
+        const storageFileName = `${idx+1}_${dateStr}_${quote_no}_${asciiName}_${asciiOrig}.${ext}`
+        const path = `${yyyy}/${mm}/${dd}/${quote_no}/${storageFileName}`
+        return {
+          file_name: display_name,
+          file_path: path,
+          method: fl.method ?? method, material: fl.material ?? material,
+          color: fl.color ?? color, quality: fl.quality ?? quality,
+          qty: parseInt(fl.qty) || qty,
+          vol: parseFloat(fl.vol) || 0,
+          size_x: parseFloat(fl.sizeX) || null, size_y: parseFloat(fl.sizeY) || null, size_z: parseFloat(fl.sizeZ) || null,
+          note: String(fl.note || ''),
+          price: (fl.price !== null && fl.price !== undefined && fl.price !== '') ? Number(fl.price) : null,
+        }
+      })
+      const first = itemsData[0] || null
+      file_name = first?.file_name ?? null
+      storage_path = first?.file_path ?? null
+      storagePaths = itemsData.map(d => d.file_path)
 
       const baseRow: any = {
         quote_no, name, email, company, phone, note,
         method, material, color, quality, qty, infill,
-        vol_cm3: vol, file_name, file_path, auto_price,
+        vol_cm3: vol, file_name, file_path: storage_path, auto_price,
         size_x: parseFloat(body.sizeX) || null,
         size_y: parseFloat(body.sizeY) || null,
         size_z: parseFloat(body.sizeZ) || null,
@@ -106,12 +124,13 @@ export async function POST(req: NextRequest) {
         privacy_consent: body.privacy_consent === true,
         marketing_consent: body.marketing_consent === true,
         tracking_code: genTrackingCode(),
+        items: itemsData,
       }
 
-      // 동의·주소 포함 저장 시도. 컬럼 누락 시 기본 필드로 재시도(견적 생성 보장).
+      // 확장 컬럼 포함 저장 시도. 컬럼 누락 시 기본 필드로 재시도(견적 생성 보장).
       let res = await supabaseAdmin.from('quotes').insert(fullRow).select().single()
       if (res.error && !isUnique(res.error)) {
-        console.warn('[API] 동의/주소 포함 저장 실패 → 기본 필드로 재시도(마이그레이션 필요):', res.error.message)
+        console.warn('[API] 확장 컬럼 저장 실패 → 기본 필드로 재시도(마이그레이션 필요):', res.error.message)
         res = await supabaseAdmin.from('quotes').insert(baseRow).select().single()
       }
       if (res.error) {
@@ -204,7 +223,7 @@ export async function POST(req: NextRequest) {
       console.log('[EMAIL] 관리자 발송 성공:', adminEmailResult.data?.id)
     }
 
-    return NextResponse.json({ ok: true, quote_no, storage_path })
+    return NextResponse.json({ ok: true, quote_no, storage_path, storage_paths: storagePaths, tracking_code: data.tracking_code || null })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
   }
