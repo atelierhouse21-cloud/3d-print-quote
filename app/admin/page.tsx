@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS } from '@/lib/constants'
+import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown} from '@/lib/constants'
 import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 const S: Record<string, React.CSSProperties> = {
@@ -742,35 +742,83 @@ export default function AdminPage() {
           <Info label="마케팅 활용 동의" value={sel.marketing_consent ? '동의' : '미동의'} />
         </Section>
         <Section title="업로드 파일">
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
-            <div style={{ flex:1 }}><Info label="파일명" value={sel.file_name||'-'} /></div>
-            {sel.file_path && (
-              <button onClick={()=>downloadFile(sel.file_path!, sel.file_name||'download', password)}
-                style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:6,
-                  padding:'7px 14px', background:'#2563eb', color:'#fff', border:'none',
-                  borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                다운로드
-              </button>
-            )}
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginTop:8 }}>
-            <Info label="X (가로)" value={(sel as any).size_x ? `${(sel as any).size_x} mm` : '-'} />
-            <Info label="Y (세로)" value={(sel as any).size_y ? `${(sel as any).size_y} mm` : '-'} />
-            <Info label="Z (높이)" value={(sel as any).size_z ? `${(sel as any).size_z} mm` : '-'} />
-            <Info label="부피"     value={sel.vol_cm3 ? `${sel.vol_cm3} cm³` : '-'} />
-          </div>
+          {Array.isArray((sel as any).items) && (sel as any).items.length > 0 ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ fontSize:12, color:'#6b7280', fontWeight:700 }}>총 {(sel as any).items.length}개 파일</div>
+              {((sel as any).items as any[]).map((fl, i) => (
+                <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:'12px 14px', background:'#fafafa' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:8 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:11, color:'#9ca3af', fontWeight:700, marginBottom:2 }}>파일 {i+1}</div>
+                      <div style={{ fontSize:13, fontWeight:600, wordBreak:'break-all' }}>{fl.file_name || '-'}</div>
+                    </div>
+                    {fl.file_path && (
+                      <button onClick={()=>downloadFile(fl.file_path, fl.file_name||'download', password)}
+                        style={{ flexShrink:0, padding:'7px 14px', background:'#2563eb', color:'#fff', border:'none',
+                          borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                        다운로드
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, fontSize:12 }}>
+                    <Info label="방식" value={METHODS[fl.method]?.label||fl.method||'-'} />
+                    <Info label="소재" value={fl.material||'-'} />
+                    <Info label="색상" value={fl.color||'-'} />
+                    <Info label="품질" value={fl.quality||'-'} />
+                    <Info label="수량" value={`${fl.qty||0}개`} />
+                    <Info label="크기" value={(fl.size_x||fl.size_y||fl.size_z) ? `${fl.size_x||0}×${fl.size_y||0}×${fl.size_z||0}mm` : '-'} />
+                    <Info label="부피" value={fl.vol ? `${fl.vol} cm³` : '-'} />
+                    <Info label="예상가" value={fl.price!=null ? krw(fl.price) : '-'} bold />
+                  </div>
+                  {fl.note && (
+                    <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid #e5e7eb', fontSize:12, color:'#374151' }}>
+                      <b style={{ color:'#6b7280' }}>요청:</b> {fl.note}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                <div style={{ flex:1 }}><Info label="파일명" value={sel.file_name||'-'} /></div>
+                {sel.file_path && (
+                  <button onClick={()=>downloadFile(sel.file_path!, sel.file_name||'download', password)}
+                    style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:6,
+                      padding:'7px 14px', background:'#2563eb', color:'#fff', border:'none',
+                      borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                    다운로드
+                  </button>
+                )}
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginTop:8 }}>
+                <Info label="X (가로)" value={(sel as any).size_x ? `${(sel as any).size_x} mm` : '-'} />
+                <Info label="Y (세로)" value={(sel as any).size_y ? `${(sel as any).size_y} mm` : '-'} />
+                <Info label="Z (높이)" value={(sel as any).size_z ? `${(sel as any).size_z} mm` : '-'} />
+                <Info label="부피"     value={sel.vol_cm3 ? `${sel.vol_cm3} cm³` : '-'} />
+              </div>
+            </>
+          )}
         </Section>
       </div>
 
-      <Section title="출력 사양" style={{ marginBottom:12 }}>
+      <Section title="출력 사양 (대표)" style={{ marginBottom:12 }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
           <Info label="방식"     value={METHODS[sel.method]?.label||sel.method} />
           <Info label="소재"     value={sel.material} />
           <Info label="색상"     value={sel.color} />
           <Info label="품질"     value={sel.quality} />
           <Info label="수량"     value={`${sel.qty}개`} />
-          <Info label="자동 견적가" value={krw(sel.auto_price)||'-'} bold />
+          <Info label="자동 견적가(합계)" value={krw(sel.auto_price)||'-'} bold />
         </div>
+        {(() => { const b = priceBreakdown(sel.auto_price); return (
+          <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e5e7eb', display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
+            <Info label="공급가" value={krw(b.supply)} />
+            <Info label="부가세(10%)" value={krw(b.vat)} />
+            <Info label="배송비" value={krw(b.shipping)} />
+            <Info label="합계(VAT·배송 포함)" value={krw(b.total)} bold />
+          </div>
+        )})()}
         {sel.note && (
           <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
             <Info label="고객 요청 사항" value={sel.note} />
