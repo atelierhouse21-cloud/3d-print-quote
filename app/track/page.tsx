@@ -80,7 +80,7 @@ export default function TrackPage() {
     if (!v) { setErr('확인 번호를 입력해 주세요.'); return }
     setLoading(true); setErr(''); setData(null)
     try {
-      const res = await fetch(`/api/track?code=${encodeURIComponent(v)}`)
+      const res = await fetch(`/api/track?code=${encodeURIComponent(v)}&t=${Date.now()}`, { cache: 'no-store' })
       const json = await res.json()
       if (!res.ok) { setErr(json.error || '조회에 실패했습니다.'); setData(null) }
       else setData(json)
