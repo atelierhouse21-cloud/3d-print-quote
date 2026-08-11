@@ -206,6 +206,20 @@ function MethodSettingCard({
 
       {cfg.enabled && (
         <div style={{ padding:'16px 18px' }}>
+          {/* 하루 접수 혼잡 안내 기준 */}
+          <div style={{ marginBottom:18, padding:'12px 14px', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <span style={{ fontSize:13, fontWeight:700, color:'#92400e' }}>하루 접수 혼잡 안내 기준</span>
+              <input type="number" step="1" min={0} value={cfg.dailyLimit ?? 0}
+                onChange={e => onChange(method, { ...cfg, dailyLimit: parseInt(e.target.value) || 0 })}
+                style={{ ...inpS, width:80, fontWeight:700 }} />
+              <span style={{ fontSize:12, color:'#92400e' }}>건</span>
+            </div>
+            <p style={{ fontSize:11, color:'#b45309', margin:'8px 0 0' }}>
+              오늘 이 방식의 접수가 기준 건수 이상이면, 고객 화면에 &quot;작업 대기가 많아 시간이 더 걸릴 수 있다&quot;는 안내가 표시됩니다. 접수는 정상 진행됩니다. (0 = 안내 없음)
+            </p>
+          </div>
+
           {/* 소재 & 색상 & 단가계수 */}
           <div style={{ marginBottom:18 }}>
             <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 최소금액 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
