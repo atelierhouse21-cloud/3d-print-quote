@@ -92,7 +92,7 @@ export type Quote = {
 // ═══════════════════════════════════════════════════════════════
 export type MaterialCfg = { name: string; density: number; coefficient: number; minPrice: number; maxX: number; maxY: number; maxZ: number; colors: string[] }
 export type QualityCfg  = { name: string; factor: number }
-export type MethodCfg   = { enabled: boolean; materials: MaterialCfg[]; qualities: QualityCfg[] }
+export type MethodCfg   = { enabled: boolean; dailyLimit: number; materials: MaterialCfg[]; qualities: QualityCfg[] }
 export type PrintOptions = Record<string, MethodCfg>
 
 // 소재별 기본 단가 계수 (관리자 설정 값) — 관리자가 조정 가능
@@ -119,7 +119,7 @@ export function defaultMethodCfg(method: string): MethodCfg {
     name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...(COLS[method] || [])],
   }))
   const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m }))
-  return { enabled: true, materials, qualities }
+  return { enabled: true, dailyLimit: 0, materials, qualities }
 }
 
 // 전체 기본 설정
@@ -162,6 +162,7 @@ export function normalizeSettings(data: any): PrintOptions {
       const methodCoeff = typeof cur.coefficient === 'number' ? cur.coefficient : (DEFAULT_COEFF[m] ?? 1000)
       r[m] = {
         enabled: cur.enabled !== false,
+        dailyLimit: Number(cur.dailyLimit) || 0,
         materials: cur.materials.map((x: any) => ({
           name: String(x.name),
           density: Number(x.density) || 1.0,
@@ -182,6 +183,7 @@ export function normalizeSettings(data: any): PrintOptions {
       const oldQuals: string[]  = Array.isArray(cur.qualities) ? cur.qualities : (QUAL[m] || []).map(q => q.v)
       r[m] = {
         enabled: cur.enabled !== false,
+        dailyLimit: Number(cur.dailyLimit) || 0,
         materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...oldColors] })),
         qualities: oldQuals.map(name => {
           const f = (QUAL[m] || []).find(q => q.v === name)
