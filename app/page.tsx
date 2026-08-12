@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { METHODS, calcDays, krw, calcPriceV2, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_YEARS, priceBreakdown, SHIPPING_FEE } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE } from '@/lib/constants'
 import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
@@ -751,7 +751,7 @@ export default function Home() {
                 <div style={{marginTop:10,padding:'10px 12px',background:'#f9fafb',borderRadius:8,fontSize:12,color:'#4b5563',lineHeight:1.7}}>
                   <div><b>· 수집·이용 목적:</b> 3D 프린팅 견적 상담, 제작 및 출력물 배송, 견적 진행 안내(이메일·문자) 발송</div>
                   <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 수령(배송) 주소, 업로드한 3D 모델 파일 및 견적 정보</div>
-                  <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_YEARS}년 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
+                  <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_MONTHS}개월 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
                   <div><b>· 동의 거부 권리:</b> 동의를 거부할 권리가 있으며, 거부 시 견적 서비스 이용이 제한될 수 있습니다.</div>
                   <div style={{marginTop:6}}><a href="/privacy" target="_blank" rel="noopener noreferrer" style={{color:'#2563eb',textDecoration:'underline'}}>개인정보처리방침 전문 보기</a></div>
                 </div>
