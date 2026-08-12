@@ -771,7 +771,11 @@ export default function AdminPage() {
                 <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:'12px 14px', background:'#fafafa' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:11, color:'#9ca3af', fontWeight:700, marginBottom:2 }}>파일 {i+1}</div>
+                      <div style={{ fontSize:11, color:'#9ca3af', fontWeight:700, marginBottom:2, display:'flex', alignItems:'center', gap:6 }}>
+                        파일 {i+1}
+                        {fl.manualReview && <span style={{ background:'#dbeafe', color:'#1e40af', fontWeight:700, borderRadius:20, padding:'1px 8px', fontSize:10 }}>담당자 견적 요청</span>}
+                        {fl.objectCount != null && fl.objectCount > 1 && <span style={{ background:'#fef3c7', color:'#92400e', fontWeight:700, borderRadius:20, padding:'1px 8px', fontSize:10 }}>개체 {fl.objectCount}개</span>}
+                      </div>
                       <div style={{ fontSize:13, fontWeight:600, wordBreak:'break-all' }}>{fl.file_name || '-'}</div>
                     </div>
                     {fl.file_path && (
@@ -790,7 +794,7 @@ export default function AdminPage() {
                     <Info label="수량" value={`${fl.qty||0}개`} />
                     <Info label="크기" value={(fl.size_x||fl.size_y||fl.size_z) ? `${fl.size_x||0}×${fl.size_y||0}×${fl.size_z||0}mm` : '-'} />
                     <Info label="부피" value={fl.vol ? `${fl.vol} cm³` : '-'} />
-                    <Info label="예상가" value={fl.price!=null ? krw(fl.price) : '-'} bold />
+                    <Info label="예상가" value={fl.manualReview ? '담당자 견적' : (fl.price!=null ? krw(fl.price) : '-')} bold />
                   </div>
                   {fl.note && (
                     <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid #e5e7eb', fontSize:12, color:'#374151' }}>
