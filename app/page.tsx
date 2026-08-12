@@ -1,5 +1,8 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
+import * as THREE from 'three'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { METHODS, calcDays, krw, calcPriceV2, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE } from '@/lib/constants'
 import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
@@ -123,156 +126,129 @@ function countObjects(v: Float32Array): number {
 // ── STL 뷰어 ──────────────────────────────────────────
 type STLInfo = { x:number; y:number; z:number; volume:number; objectCount:number|null }
 function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const viewerRef = useRef<HTMLDivElement>(null)
+  const mountRef = useRef<HTMLDivElement>(null)
   const [info, setInfo] = useState<STLInfo|null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(false)
-  const [tick, setTick] = useState(0)
-  const dragging = useRef(false)
-  const lastX = useRef(0); const lastY = useRef(0)
-  const lastPinchDist = useRef(0); const touching = useRef(false)
-  const vertsRef = useRef<Float32Array|null>(null)
-  const normsRef = useRef<Float32Array|null>(null)
-  const bboxRef = useRef<ReturnType<typeof calcBBox>|null>(null)
-  const rotY = useRef(0.4); const rotX = useRef(-0.3); const zoom = useRef(1.0)
 
   useEffect(() => {
     if (!file) return
+    let disposed = false
+    let renderer: THREE.WebGLRenderer | null = null
+    let controls: any = null
+    let geometry: THREE.BufferGeometry | null = null
+    let material: THREE.Material | null = null
+    let ro: ResizeObserver | null = null
+    let animId = 0
     setLoading(true); setErr(false)
+
     file.arrayBuffer().then(buf => {
+      if (disposed) return
       try {
-        const v = parseSTL(buf)
-        const bbox = calcBBox(v)
-        const volume = calcVolume(v)
-        const triCount = v.length / 9
-        // 개체 수는 정확도를 위해 원본으로 계산(일정 크기 이하에서만)
+        // STL 파싱 (바이너리/아스키 자동)
+        geometry = new STLLoader().parse(buf as ArrayBuffer)
+
+        // 분석용: 위치 배열로 부피·크기·개체수 계산 (원본 기준, 정확)
+        const verts = geometry.getAttribute('position').array as Float32Array
+        const bbox = calcBBox(verts)
+        const volume = calcVolume(verts)
+        const triCount = verts.length / 9
         let objectCount: number | null = null
-        if (triCount > 0 && triCount <= 200000) {
-          objectCount = countObjects(v)
-        }
-        // 표시용은 삼각형을 줄여 가볍게 그림(회전/확대가 부드러움). 견적값은 원본 기준 유지.
-        const renderV = decimateForRender(v, 12000)
-        const smooth = (renderV.length / 9) <= 60000 ? computeSmoothNormals(renderV) : null
+        if (triCount > 0 && triCount <= 200000) objectCount = countObjects(verts)
         const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, objectCount }
         setInfo(si); onAnalyzed(si)
-        vertsRef.current = renderV; normsRef.current = smooth; bboxRef.current = bbox
-        rotY.current=0.4; rotX.current=-0.3; zoom.current=1.0
+
+        const mount = mountRef.current
+        if (!mount) { setLoading(false); return }
+        const W = mount.clientWidth || 500
+        const H = height
+
+        // 렌더링 준비
+        geometry.center()
+        geometry.computeVertexNormals()
+        geometry.computeBoundingSphere()
+        const radius = geometry.boundingSphere?.radius || 1
+
+        const scene = new THREE.Scene()
+        scene.background = new THREE.Color(0xeef1f5)
+
+        const camera = new THREE.PerspectiveCamera(35, W/H, radius*0.01, radius*100)
+        const dist = radius / Math.sin((35 * Math.PI/180)/2) * 1.25
+        camera.position.set(dist*0.55, dist*0.4, dist*0.95)
+
+        renderer = new THREE.WebGLRenderer({ antialias: true })
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+        renderer.setSize(W, H)
+        renderer.domElement.style.width = '100%'
+        renderer.domElement.style.height = '100%'
+        renderer.domElement.style.display = 'block'
+        mount.appendChild(renderer.domElement)
+
+        // 조명 (그림자 없음)
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7))
+        const d1 = new THREE.DirectionalLight(0xffffff, 0.75); d1.position.set(1, 1.4, 1); scene.add(d1)
+        const d2 = new THREE.DirectionalLight(0xffffff, 0.35); d2.position.set(-1, 0.4, -0.9); scene.add(d2)
+
+        // 남색 계열 단색 면
+        material = new THREE.MeshStandardMaterial({ color: 0x3a5a92, metalness: 0.15, roughness: 0.6 })
+        const mesh = new THREE.Mesh(geometry, material)
+        scene.add(mesh)
+
+        controls = new OrbitControls(camera, renderer.domElement)
+        controls.enableDamping = true
+        controls.dampingFactor = 0.1
+        controls.target.set(0, 0, 0)
+        controls.update()
+
+        const animate = () => {
+          if (disposed || !renderer) return
+          animId = requestAnimationFrame(animate)
+          controls.update()
+          renderer.render(scene, camera)
+        }
+        animate()
+
+        ro = new ResizeObserver(() => {
+          if (!renderer || !mount) return
+          const w = mount.clientWidth || W
+          renderer.setSize(w, H)
+          camera.aspect = w / H
+          camera.updateProjectionMatrix()
+        })
+        ro.observe(mount)
+
         setLoading(false)
-      } catch { setErr(true); setLoading(false) }
-    }).catch(() => { setErr(true); setLoading(false) })
-  }, [file])
-
-  useEffect(() => { if (!loading) draw() }, [loading, tick])
-
-  useEffect(() => {
-    const el = viewerRef.current; if (!el) return
-    const wheelH = (e: WheelEvent) => {
-      e.preventDefault()
-      zoom.current *= e.deltaY > 0 ? 0.9 : 1.1
-      zoom.current = Math.max(0.2, Math.min(5.0, zoom.current))
-      setTick(t=>t+1)
-    }
-    const touchH = (e: TouchEvent) => { if (e.touches.length > 1) e.preventDefault() }
-    el.addEventListener('wheel', wheelH, { passive:false })
-    el.addEventListener('touchmove', touchH, { passive:false })
-    return () => { el.removeEventListener('wheel', wheelH); el.removeEventListener('touchmove', touchH) }
-  }, [])
-
-  function draw() {
-    const canvas = canvasRef.current; const verts = vertsRef.current; const bbox = bboxRef.current
-    if (!canvas||!verts||!bbox) return
-    const norms = normsRef.current
-    const ctx = canvas.getContext('2d'); if (!ctx) return
-    const W=canvas.width, H=canvas.height
-    ctx.clearRect(0,0,W,H); ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,W,H)
-    const baseScale = Math.min(W,H)*0.80/Math.max(bbox.x||1,bbox.y||1,bbox.z||1)
-    const scale=baseScale*zoom.current
-    const cx=bbox.cx,cy=bbox.cy,cz=bbox.cz
-    const cry=Math.cos(rotY.current),sry=Math.sin(rotY.current)
-    const crx=Math.cos(rotX.current),srx=Math.sin(rotX.current)
-    const transform=(x:number,y:number,z:number)=>{
-      const x1=cry*x+sry*z, z1=-sry*x+cry*z
-      const y2=crx*y-srx*z1, z2=srx*y+crx*z1
-      return {px:x1+W/2,py:-y2+H/2,pz:z2}
-    }
-    type Tri={depth:number;pts:{px:number;py:number}[];wnx:number;wny:number;wnz:number}
-    const tris:Tri[]=[]
-    for(let i=0;i<verts.length;i+=9){
-      const ax2=verts[i+3]-verts[i],ay2=verts[i+4]-verts[i+1],az2=verts[i+5]-verts[i+2]
-      const bx2=verts[i+6]-verts[i],by2=verts[i+7]-verts[i+1],bz2=verts[i+8]-verts[i+2]
-      // 셰이딩 법선: 스무스 법선이 있으면 정점 평균(같은 평면=균일, 곡면=부드럽게), 없으면 면 법선
-      let nx:number,ny:number,nz:number
-      if(norms){
-        nx=(norms[i]+norms[i+3]+norms[i+6])/3; ny=(norms[i+1]+norms[i+4]+norms[i+7])/3; nz=(norms[i+2]+norms[i+5]+norms[i+8])/3
-      } else {
-        nx=ay2*bz2-az2*by2; ny=az2*bx2-ax2*bz2; nz=ax2*by2-ay2*bx2
+      } catch {
+        setErr(true); setLoading(false)
       }
-      const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1
-      const p0=transform((verts[i]-cx)*scale,(verts[i+1]-cy)*scale,(verts[i+2]-cz)*scale)
-      const p1=transform((verts[i+3]-cx)*scale,(verts[i+4]-cy)*scale,(verts[i+5]-cz)*scale)
-      const p2=transform((verts[i+6]-cx)*scale,(verts[i+7]-cy)*scale,(verts[i+8]-cz)*scale)
-      const e1x=p1.px-p0.px,e1y=p1.py-p0.py,e2x=p2.px-p0.px,e2y=p2.py-p0.py
-      if(e1x*e2y-e1y*e2x>=0) continue
-      tris.push({depth:(p0.pz+p1.pz+p2.pz)/3,pts:[p0,p1,p2],wnx:nx/nl,wny:ny/nl,wnz:nz/nl})
-    }
-    tris.sort((a,b)=>a.depth-b.depth)
-    const L1={x:0.6,y:0.9,z:0.5},l1l=Math.sqrt(0.6**2+0.9**2+0.5**2)
-    const L2={x:-0.4,y:0.5,z:-0.3},l2l=Math.sqrt(0.4**2+0.5**2+0.3**2)
-    for(const t of tris){
-      const d1=Math.max(0,t.wnx*L1.x/l1l+t.wny*L1.y/l1l+t.wnz*L1.z/l1l)
-      const d2=Math.max(0,t.wnx*L2.x/l2l+t.wny*L2.y/l2l+t.wnz*L2.z/l2l)
-      const bright=Math.min(1,0.30+d1*0.55+d2*0.18)
-      const v=Math.round(105+bright*(238-105))
-      const [q0,q1,q2]=t.pts
-      const tcx=(q0.px+q1.px+q2.px)/3,tcy=(q0.py+q1.py+q2.py)/3
-      // 면 사이 미세 틈 방지용 최소 확장(스무스 셰이딩에서는 같은 색이라 표시 안 됨)
-      const ep=t.pts.map(p=>({px:tcx+(p.px-tcx)*1.004+(p.px-tcx>0?0.4:-0.4),py:tcy+(p.py-tcy)*1.004+(p.py-tcy>0?0.4:-0.4)}))
-      ctx.beginPath(); ctx.moveTo(ep[0].px,ep[0].py); ctx.lineTo(ep[1].px,ep[1].py); ctx.lineTo(ep[2].px,ep[2].py)
-      ctx.closePath(); ctx.fillStyle=`rgb(${v},${v},${v})`; ctx.fill()
-    }
-  }
+    }).catch(() => { if (!disposed) { setErr(true); setLoading(false) } })
 
-  const onMD=(e:React.MouseEvent)=>{dragging.current=true;lastX.current=e.clientX;lastY.current=e.clientY}
-  const onMM=(e:React.MouseEvent)=>{
-    if(!dragging.current)return
-    rotY.current+=(e.clientX-lastX.current)*0.008; rotX.current+=(e.clientY-lastY.current)*0.008
-    rotX.current=Math.max(-Math.PI/2,Math.min(Math.PI/2,rotX.current))
-    lastX.current=e.clientX; lastY.current=e.clientY; setTick(t=>t+1)
-  }
-  const onMU=()=>{dragging.current=false}
-  const onTS=(e:React.TouchEvent)=>{
-    if(e.touches.length===1){touching.current=true;lastX.current=e.touches[0].clientX;lastY.current=e.touches[0].clientY}
-    else if(e.touches.length===2){const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;lastPinchDist.current=Math.sqrt(dx*dx+dy*dy)}
-  }
-  const onTM=(e:React.TouchEvent)=>{
-    if(e.touches.length===1&&touching.current){
-      rotY.current+=(e.touches[0].clientX-lastX.current)*0.01; rotX.current+=(e.touches[0].clientY-lastY.current)*0.01
-      rotX.current=Math.max(-Math.PI/2,Math.min(Math.PI/2,rotX.current))
-      lastX.current=e.touches[0].clientX; lastY.current=e.touches[0].clientY; setTick(t=>t+1)
-    } else if(e.touches.length===2){
-      const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY
-      const dist=Math.sqrt(dx*dx+dy*dy)
-      if(lastPinchDist.current>0){zoom.current*=dist/lastPinchDist.current;zoom.current=Math.max(0.2,Math.min(5,zoom.current));setTick(t=>t+1)}
-      lastPinchDist.current=dist
+    return () => {
+      disposed = true
+      cancelAnimationFrame(animId)
+      ro?.disconnect()
+      try { controls?.dispose?.() } catch {}
+      try { geometry?.dispose() } catch {}
+      try { (material as any)?.dispose?.() } catch {}
+      if (renderer) {
+        renderer.dispose()
+        const dom = renderer.domElement
+        if (dom && dom.parentNode) dom.parentNode.removeChild(dom)
+      }
     }
-  }
-  const onTE=()=>{touching.current=false;lastPinchDist.current=0}
+  }, [file, height])
 
   return (
     <div style={{borderRadius:10,overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-      <div ref={viewerRef} style={{position:'relative',background:'#f5f5f5',height,cursor:dragging.current?'grabbing':'grab',touchAction:'none'}}
-        onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU} onMouseLeave={onMU}
-        onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
-        {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#6b7280'}}>
+      <div ref={mountRef} style={{position:'relative',background:'#eef1f5',height,touchAction:'none'}}>
+        {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#6b7280',zIndex:1}}>
           <div style={{fontSize:12}}>분석 중...</div>
         </div>}
-        {err&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,color:'#9ca3af'}}>
+        {err&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,color:'#9ca3af',zIndex:1}}>
           <div style={{fontSize:12}}>미리보기 불가</div>
         </div>}
-        <canvas ref={canvasRef} width={500} height={height} style={{width:'100%',height:'100%',display:loading||err?'none':'block'}}/>
-        {!loading&&!err&&<div style={{position:'absolute',bottom:6,right:8,fontSize:10,color:'#9ca3af',background:'rgba(255,255,255,0.85)',padding:'2px 7px',borderRadius:5,pointerEvents:'none'}}>
-          드래그·회전 | 휠·핀치·확대
+        {!loading&&!err&&<div style={{position:'absolute',bottom:6,right:8,fontSize:10,color:'#6b7280',background:'rgba(255,255,255,0.85)',padding:'2px 7px',borderRadius:5,pointerEvents:'none',zIndex:1}}>
+          드래그·회전 | 휠·핀치·확대 | 우클릭·이동
         </div>}
       </div>
       {info&&(
