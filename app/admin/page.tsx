@@ -1,7 +1,92 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+import * as THREE from 'three'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown} from '@/lib/constants'
 import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
+
+// 관리자용 3D 미리보기 (버튼 클릭 시 저장된 파일을 불러와 렌더링)
+function AdminSTLViewer({ path, password }: { path: string; password: string }) {
+  const [open, setOpen] = useState(false)
+  const mountRef = useRef<HTMLDivElement>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    let disposed = false
+    let renderer: THREE.WebGLRenderer | null = null
+    let controls: any = null
+    let geometry: THREE.BufferGeometry | null = null
+    let material: THREE.Material | null = null
+    let ro: ResizeObserver | null = null
+    let animId = 0
+    setLoading(true); setErr('')
+
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/admin/download?path=${encodeURIComponent(path)}`, { headers: { 'x-admin-password': password } })
+        const j = await res.json()
+        if (!res.ok || !j.url) throw new Error(j.error || '파일을 불러오지 못했습니다')
+        const buf = await (await fetch(j.url)).arrayBuffer()
+        if (disposed) return
+        geometry = new STLLoader().parse(buf)
+        const mount = mountRef.current
+        if (!mount) { setLoading(false); return }
+        const W = mount.clientWidth || 400, H = 240
+        geometry.center(); geometry.computeVertexNormals(); geometry.computeBoundingSphere()
+        const radius = geometry.boundingSphere?.radius || 1
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0xeef1f5)
+        const camera = new THREE.PerspectiveCamera(35, W/H, radius*0.01, radius*100)
+        const dist = radius / Math.sin((35*Math.PI/180)/2) * 1.25
+        camera.position.set(dist*0.55, dist*0.4, dist*0.95)
+        renderer = new THREE.WebGLRenderer({ antialias: true })
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+        renderer.setSize(W, H)
+        renderer.domElement.style.width = '100%'; renderer.domElement.style.height = '100%'; renderer.domElement.style.display = 'block'
+        mount.appendChild(renderer.domElement)
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7))
+        const d1 = new THREE.DirectionalLight(0xffffff, 0.75); d1.position.set(1,1.4,1); scene.add(d1)
+        const d2 = new THREE.DirectionalLight(0xffffff, 0.35); d2.position.set(-1,0.4,-0.9); scene.add(d2)
+        material = new THREE.MeshStandardMaterial({ color: 0x3a5a92, metalness: 0.15, roughness: 0.6 })
+        scene.add(new THREE.Mesh(geometry, material))
+        controls = new OrbitControls(camera, renderer.domElement)
+        controls.enableDamping = true; controls.dampingFactor = 0.1; controls.target.set(0,0,0); controls.update()
+        const animate = () => { if (disposed || !renderer) return; animId = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera) }
+        animate()
+        ro = new ResizeObserver(() => { if (!renderer || !mount) return; const w = mount.clientWidth || W; renderer.setSize(w, H); camera.aspect = w/H; camera.updateProjectionMatrix() })
+        ro.observe(mount)
+        setLoading(false)
+      } catch (e: any) { if (!disposed) { setErr(e?.message || '미리보기 실패'); setLoading(false) } }
+    })()
+
+    return () => {
+      disposed = true
+      cancelAnimationFrame(animId)
+      ro?.disconnect()
+      try { controls?.dispose?.() } catch {}
+      try { geometry?.dispose() } catch {}
+      try { (material as any)?.dispose?.() } catch {}
+      if (renderer) { renderer.dispose(); const dom = renderer.domElement; if (dom && dom.parentNode) dom.parentNode.removeChild(dom) }
+    }
+  }, [open, path, password])
+
+  return (
+    <div style={{ marginTop:8 }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ padding:'6px 12px', background:'#fff', color:'#2563eb', border:'1px solid #bfdbfe', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+        {open ? '미리보기 닫기' : '3D 미리보기'}
+      </button>
+      {open && (
+        <div ref={mountRef} style={{ height:240, background:'#eef1f5', borderRadius:8, marginTop:8, position:'relative', touchAction:'none', overflow:'hidden', border:'1px solid #e5e7eb' }}>
+          {loading && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:'#6b7280' }}>불러오는 중...</div>}
+          {err && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:'#dc2626' }}>{err}</div>}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const S: Record<string, React.CSSProperties> = {
   wrap: { maxWidth:900, margin:'0 auto', padding:'24px 16px 60px' },
@@ -762,6 +847,8 @@ export default function AdminPage() {
           {sel.phone && <Info label="연락처" value={sel.phone} />}
           {sel.address && <Info label="수령 주소" value={sel.address} />}
           <Info label="마케팅 활용 동의" value={sel.marketing_consent ? '동의' : '미동의'} />
+          <Info label="현금영수증" value={(sel as any).billing?.cashReceipt ? '요청함' : '요청 안함'} />
+          <Info label="세금계산서" value={(sel as any).billing?.taxInvoice ? '요청함 (담당자 연락 필요)' : '요청 안함'} />
         </Section>
         <Section title="업로드 파일">
           {Array.isArray((sel as any).items) && (sel as any).items.length > 0 ? (
@@ -801,6 +888,7 @@ export default function AdminPage() {
                       <b style={{ color:'#6b7280' }}>요청:</b> {fl.note}
                     </div>
                   )}
+                  {fl.file_path && <AdminSTLViewer path={fl.file_path} password={password} />}
                 </div>
               ))}
             </div>
@@ -823,6 +911,7 @@ export default function AdminPage() {
                 <Info label="Z (높이)" value={(sel as any).size_z ? `${(sel as any).size_z} mm` : '-'} />
                 <Info label="부피"     value={sel.vol_cm3 ? `${sel.vol_cm3} cm³` : '-'} />
               </div>
+              {sel.file_path && <AdminSTLViewer path={sel.file_path} password={password} />}
             </>
           )}
         </Section>
