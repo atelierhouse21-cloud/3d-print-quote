@@ -1,4 +1,4 @@
-import { RETENTION_YEARS } from '@/lib/constants'
+import { RETENTION_MONTHS } from '@/lib/constants'
 
 export const metadata = { title: '개인정보처리방침 — 아틀리에 하우스' }
 
@@ -31,7 +31,7 @@ export default function PrivacyPage() {
 
       <h2 style={h2}>3. 보유 및 이용 기간</h2>
       <p style={p}>
-        견적 요청일로부터 {RETENTION_YEARS}년 동안 보유·이용하며, 기간 경과 또는 처리 목적 달성 시 지체 없이 파기합니다.
+        견적 요청일로부터 {RETENTION_MONTHS}개월 동안 보유·이용하며, 기간 경과 또는 처리 목적 달성 시 지체 없이 파기합니다.
         다만 전자상거래 등에서의 소비자보호에 관한 법률 등 관계 법령에서 일정 기간 보존을 요구하는 경우 해당 기간 동안 보관합니다.
       </p>
 
