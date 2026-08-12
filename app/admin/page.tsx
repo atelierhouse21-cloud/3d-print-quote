@@ -169,12 +169,15 @@ function MethodSettingCard({
   const addQual = () => {
     const n = newQual.trim(); if (!n) return
     if (cfg.qualities.some(q => q.name === n)) { alert('이미 있는 품질입니다.'); return }
-    setQualities([...cfg.qualities, { name:n, factor:1.0 }]); setNewQual('')
+    setQualities([...cfg.qualities, { name:n, factor:1.0, weightRatio:1.0 }]); setNewQual('')
   }
   const removeQual = (i: number) => setQualities(cfg.qualities.filter((_, idx) => idx !== i))
   const updQualName = (i: number, name: string) => setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, name } : q))
   const updQualFactor = (i: number, val: string) => {
     const v = parseFloat(val); setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, factor: isNaN(v) ? 0 : v } : q))
+  }
+  const updQualWeight = (i: number, val: string) => {
+    const v = parseFloat(val); setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, weightRatio: isNaN(v) ? 0 : v } : q))
   }
 
   return (
@@ -224,7 +227,7 @@ function MethodSettingCard({
           <div style={{ marginBottom:18 }}>
             <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 최소금액 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
             <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 10px' }}>
-              예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값 &nbsp;|&nbsp; 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).
+              예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값 × <b>무게비</b> &nbsp;|&nbsp; 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).
             </p>
             {cfg.materials.map((mat, i) => (
               <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#fff' }}>
@@ -286,17 +289,22 @@ function MethodSettingCard({
             </div>
           </div>
 
-          {/* 품질 & 보정값 */}
+          {/* 품질 & 보정값 & 무게비 */}
           <div>
-            <div style={secTitle}>품질 &amp; 보정값 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
+            <div style={secTitle}>품질 &amp; 보정값 &amp; 무게비 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
             {cfg.qualities.map((q, i) => (
-              <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+              <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
                 <input value={q.name} onChange={e => updQualName(i, e.target.value)} placeholder="품질명"
-                  style={{ ...inpS, flex:1, minWidth:0 }} />
+                  style={{ ...inpS, flex:1, minWidth:90 }} />
                 <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
                   <span style={{ fontSize:11, color:'#6b7280' }}>보정값</span>
                   <input type="number" step="0.1" min={0} value={q.factor}
-                    onChange={e => updQualFactor(i, e.target.value)} style={{ ...inpS, width:64 }} />
+                    onChange={e => updQualFactor(i, e.target.value)} style={{ ...inpS, width:60 }} />
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                  <span style={{ fontSize:11, color:'#6b7280' }}>무게비</span>
+                  <input type="number" step="0.05" min={0} value={q.weightRatio ?? 1}
+                    onChange={e => updQualWeight(i, e.target.value)} style={{ ...inpS, width:64, fontWeight:700 }} />
                 </div>
                 <button onClick={() => removeQual(i)} title="품질 삭제" style={delBtn}>×</button>
               </div>
@@ -308,7 +316,7 @@ function MethodSettingCard({
               <button onClick={addQual} style={addBtn}>+ 품질 추가</button>
             </div>
             <p style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>
-              보정값 1.0 = 기본가, 1.5 = 1.5배, 0.8 = 20% 할인. 품질이 1개면 고객은 선택 없이 자동 적용됩니다.
+              보정값 1.0 = 기본가. <b>무게비</b>는 내부 채움(infill) 등 실제 재료 사용량 반영 계수입니다. 예) 15% 채움 0.4, 45% 채움 0.7 (1.0 = 겉부피 100% 기준).
             </p>
           </div>
         </div>
