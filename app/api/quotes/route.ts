@@ -127,6 +127,9 @@ export async function POST(req: NextRequest) {
         marketing_consent: body.marketing_consent === true,
         tracking_code: genTrackingCode(),
         items: itemsData,
+        billing: (body.billing && typeof body.billing === 'object')
+          ? { cashReceipt: body.billing.cashReceipt === true, taxInvoice: body.billing.taxInvoice === true }
+          : { cashReceipt: false, taxInvoice: false },
       }
 
       // 확장 컬럼 포함 저장 시도. 컬럼 누락 시 기본 필드로 재시도(견적 생성 보장).
