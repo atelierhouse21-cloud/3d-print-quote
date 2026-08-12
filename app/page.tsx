@@ -67,6 +67,21 @@ function calcBBox(v: Float32Array) {
 }
 
 // 같은 평면/매끈한 곡면이 한 덩어리처럼 보이도록, 정점별 평균 법선(스무스 셰이딩) 계산
+// 표시(미리보기)용으로 삼각형 수를 줄임 — 견적 계산(부피/크기/개체수)은 원본을 그대로 사용
+function decimateForRender(v: Float32Array, maxTris: number): Float32Array {
+  const tri = v.length / 9
+  if (tri <= maxTris) return v
+  const stride = Math.ceil(tri / maxTris)
+  const keep = Math.ceil(tri / stride)
+  const out = new Float32Array(keep * 9)
+  let w = 0
+  for (let t = 0; t < tri; t += stride) {
+    const i = t * 9
+    out.set(v.subarray(i, i + 9), w); w += 9
+  }
+  return w === out.length ? out : out.subarray(0, w)
+}
+
 function computeSmoothNormals(v: Float32Array): Float32Array {
   const keyOf = (i: number) => `${Math.round(v[i]*1000)},${Math.round(v[i+1]*1000)},${Math.round(v[i+2]*1000)}`
   const map = new Map<string, [number, number, number]>()
@@ -131,16 +146,17 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const bbox = calcBBox(v)
         const volume = calcVolume(v)
         const triCount = v.length / 9
-        // 큰 모델은 부담이 커서 일정 크기 이하에서만 스무스 셰이딩·개체수 계산
-        let smooth: Float32Array | null = null
+        // 개체 수는 정확도를 위해 원본으로 계산(일정 크기 이하에서만)
         let objectCount: number | null = null
         if (triCount > 0 && triCount <= 200000) {
-          smooth = computeSmoothNormals(v)
           objectCount = countObjects(v)
         }
+        // 표시용은 삼각형을 줄여 가볍게 그림(회전/확대가 부드러움). 견적값은 원본 기준 유지.
+        const renderV = decimateForRender(v, 12000)
+        const smooth = (renderV.length / 9) <= 60000 ? computeSmoothNormals(renderV) : null
         const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, objectCount }
         setInfo(si); onAnalyzed(si)
-        vertsRef.current = v; normsRef.current = smooth; bboxRef.current = bbox
+        vertsRef.current = renderV; normsRef.current = smooth; bboxRef.current = bbox
         rotY.current=0.4; rotX.current=-0.3; zoom.current=1.0
         setLoading(false)
       } catch { setErr(true); setLoading(false) }
@@ -277,7 +293,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 type FileItem = {
   id:string; file:File
   vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null
-  method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number
+  method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number; weightRatio:number
   qty:number; note:string
 }
 type CustomerForm = { name:string; email:string; company:string; phone:string; address:string; addressDetail:string }
@@ -304,7 +320,7 @@ function getEnabledMethods(options: PrintOptions): [string, typeof METHODS[strin
 // 한 파일(라인)의 예상 금액: 가격식 결과에 소재별 최소 금액을 하한으로 적용
 function linePrice(it: FileItem): number {
   if (!it.vol) return 0
-  const p = calcPriceV2(it.vol, it.density, it.coefficient, it.qty, it.factor)
+  const p = calcPriceV2(it.vol, it.density, it.coefficient, it.qty, it.factor, it.weightRatio)
   return Math.max(p, it.minPrice || 0)
 }
 
@@ -327,6 +343,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
     color:    colors[0] || '',
     quality:  quals[0]?.name || '',
     factor:   quals[0]?.factor || 1.0,
+    weightRatio: quals[0]?.weightRatio || 1.0,
     qty: 1, note: '',
   }
 }
@@ -372,6 +389,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
     onChange(item.id, 'color',    mat?.colors?.[0] || '')
     onChange(item.id, 'quality',  quals[0]?.name || '')
     onChange(item.id, 'factor',   quals[0]?.factor || 1.0)
+    onChange(item.id, 'weightRatio', quals[0]?.weightRatio || 1.0)
   }
   // 소재 변경 시 밀도·단가계수·색상 갱신 (색상은 소재에 종속)
   const updMaterial = (name: string) => {
@@ -458,7 +476,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               {qualities.length>1 ? (
                 <select value={item.quality} onChange={e=>{
                   const q = qualities.find(x=>x.name===e.target.value)
-                  onChange(item.id,'quality',e.target.value); onChange(item.id,'factor',q?.factor||1.0)
+                  onChange(item.id,'quality',e.target.value); onChange(item.id,'factor',q?.factor||1.0); onChange(item.id,'weightRatio',q?.weightRatio||1.0)
                 }} style={{...S.inp,fontSize:12}}>
                   {qualities.map(q=><option key={q.name}>{q.name}</option>)}
                 </select>
