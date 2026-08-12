@@ -554,6 +554,8 @@ export default function Home() {
   const [drag, setDrag]       = useState(false)
   const [agreePrivacy, setAgreePrivacy]     = useState(false)
   const [agreeMarketing, setAgreeMarketing] = useState(false)
+  const [wantCashReceipt, setWantCashReceipt] = useState(false)
+  const [wantTaxInvoice, setWantTaxInvoice] = useState(false)
   const [showPrivacyBox, setShowPrivacyBox]     = useState(false)
   const [showMarketingBox, setShowMarketingBox] = useState(false)
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({})
@@ -666,6 +668,7 @@ export default function Home() {
         files: filesPayload,
         privacy_consent: true,
         marketing_consent: agreeMarketing,
+        billing: { cashReceipt: wantCashReceipt, taxInvoice: wantTaxInvoice },
       }
       const res = await fetch('/api/quotes', {
         method: 'POST', headers: { 'Content-Type':'application/json' },
@@ -938,6 +941,20 @@ export default function Home() {
                 <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>배송비 {krw(SHIPPING_FEE)} 포함</div>
               </div>
             )})()}
+
+            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}}>증빙 요청 (선택)</div>
+              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,marginBottom:8}}>
+                <input type="checkbox" checked={wantCashReceipt} onChange={e=>setWantCashReceipt(e.target.checked)}
+                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                <span>현금영수증 발행을 요청합니다.</span>
+              </label>
+              <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',fontSize:13}}>
+                <input type="checkbox" checked={wantTaxInvoice} onChange={e=>setWantTaxInvoice(e.target.checked)}
+                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer',marginTop:1}}/>
+                <span>세금계산서 발행을 요청합니다. <span style={{color:'#6b7280',fontSize:12}}>(영업일 이내 담당자가 별도로 연락드려 발행에 필요한 자료를 안내드립니다.)</span></span>
+              </label>
+            </div>
 
             <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:20,alignItems:'flex-start'}}>
               <span></span><span>위 금액은 자동 계산 예상 견적입니다. 담당자 검토 후 <b>확정 견적을 이메일로 안내</b>드립니다.</span>
