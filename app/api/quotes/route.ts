@@ -103,6 +103,8 @@ export async function POST(req: NextRequest) {
           size_x: parseFloat(fl.sizeX) || null, size_y: parseFloat(fl.sizeY) || null, size_z: parseFloat(fl.sizeZ) || null,
           note: String(fl.note || ''),
           price: (fl.price !== null && fl.price !== undefined && fl.price !== '') ? Number(fl.price) : null,
+          manualReview: fl.manualReview === true,
+          objectCount: (fl.objectCount !== null && fl.objectCount !== undefined) ? Number(fl.objectCount) : null,
         }
       })
       const first = itemsData[0] || null
