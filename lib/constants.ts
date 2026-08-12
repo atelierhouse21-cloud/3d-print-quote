@@ -203,8 +203,8 @@ export function calcPriceV2(vol: number, density: number, coefficient: number, q
 }
 
 // 개인정보 보유기간(년) — 견적 요청일 기준. 이 기간이 지나면 관리자 페이지에서 자동 삭제됨.
-export const RETENTION_YEARS = 3
-export const RETENTION_MS = RETENTION_YEARS * 365 * 24 * 60 * 60 * 1000
+export const RETENTION_MONTHS = 6
+export const RETENTION_MS = RETENTION_MONTHS * 30 * 24 * 60 * 60 * 1000
 
 // 부가세율 / 기본 배송비
 export const VAT_RATE = 0.1
