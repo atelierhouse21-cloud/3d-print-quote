@@ -91,7 +91,7 @@ export type Quote = {
 // v2 옵션 모델 (소재별 밀도·색상 / 품질별 보정값 / 방식별 단가계수)
 // ═══════════════════════════════════════════════════════════════
 export type MaterialCfg = { name: string; density: number; coefficient: number; minPrice: number; maxX: number; maxY: number; maxZ: number; colors: string[] }
-export type QualityCfg  = { name: string; factor: number }
+export type QualityCfg  = { name: string; factor: number; weightRatio: number }
 export type MethodCfg   = { enabled: boolean; dailyLimit: number; materials: MaterialCfg[]; qualities: QualityCfg[] }
 export type PrintOptions = Record<string, MethodCfg>
 
@@ -118,7 +118,7 @@ export function defaultMethodCfg(method: string): MethodCfg {
   const materials: MaterialCfg[] = (MATS[method] || []).map(name => ({
     name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...(COLS[method] || [])],
   }))
-  const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m }))
+  const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m, weightRatio: 1.0 }))
   return { enabled: true, dailyLimit: 0, materials, qualities }
 }
 
@@ -173,7 +173,7 @@ export function normalizeSettings(data: any): PrintOptions {
           maxZ: Number(x.maxZ) || 0,
           colors: Array.isArray(x.colors) ? x.colors.map(String) : [],
         })),
-        qualities: cur.qualities.map((x: any) => ({ name: renameQ(String(x.name)), factor: Number(x.factor) || 1.0 })),
+        qualities: cur.qualities.map((x: any) => ({ name: renameQ(String(x.name)), factor: Number(x.factor) || 1.0, weightRatio: Number(x.weightRatio) || 1.0 })),
       }
     } else {
       // 구버전(colors[], materials[], qualities[]) → 신버전 변환
@@ -187,7 +187,7 @@ export function normalizeSettings(data: any): PrintOptions {
         materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...oldColors] })),
         qualities: oldQuals.map(name => {
           const f = (QUAL[m] || []).find(q => q.v === name)
-          return { name: renameQ(name), factor: f ? f.m : 1.0 }
+          return { name: renameQ(name), factor: f ? f.m : 1.0, weightRatio: 1.0 }
         }),
       }
     }
@@ -196,8 +196,9 @@ export function normalizeSettings(data: any): PrintOptions {
 }
 
 // v2 가격식: 부피 × 밀도 × 단가계수 × 수량 × 품질보정값 (100원 단위 반올림)
-export function calcPriceV2(vol: number, density: number, coefficient: number, qty: number, qualityFactor: number): number {
-  const p = vol * density * coefficient * qty * qualityFactor
+export function calcPriceV2(vol: number, density: number, coefficient: number, qty: number, qualityFactor: number, weightRatio: number = 1): number {
+  const wr = (typeof weightRatio === 'number' && weightRatio > 0) ? weightRatio : 1
+  const p = vol * density * coefficient * qty * qualityFactor * wr
   if (!isFinite(p) || p <= 0) return 0
   return Math.round(p / 100) * 100
 }
