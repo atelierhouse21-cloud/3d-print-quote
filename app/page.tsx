@@ -154,7 +154,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const volume = calcVolume(verts)
         const triCount = verts.length / 9
         let objectCount: number | null = null
-        if (triCount > 0 && triCount <= 200000) objectCount = countObjects(verts)
+        if (triCount > 0 && triCount <= 800000) objectCount = countObjects(verts)
         const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, objectCount }
         setInfo(si); onAnalyzed(si)
 
@@ -268,7 +268,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 // ── 타입 ──────────────────────────────────────────────
 type FileItem = {
   id:string; file:File
-  vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null
+  vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null; manualReview:boolean
   method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number; weightRatio:number
   qty:number; note:string
 }
@@ -300,6 +300,18 @@ function linePrice(it: FileItem): number {
   return Math.max(p, it.minPrice || 0)
 }
 
+// 자동 견적이 어려워 담당자 수동 견적이 필요한 파일인지 판정 (다중 개체 또는 최대 출력 사이즈 초과)
+function itemNeedsManual(it: FileItem, options: PrintOptions): boolean {
+  if (it.objectCount != null && it.objectCount > 1) return true
+  const m = getMaterials(options, it.method).find(x => x.name === it.material)
+  if (m) {
+    if (m.maxX > 0 && it.sizeX != null && it.sizeX > m.maxX) return true
+    if (m.maxY > 0 && it.sizeY != null && it.sizeY > m.maxY) return true
+    if (m.maxZ > 0 && it.sizeZ != null && it.sizeZ > m.maxZ) return true
+  }
+  return false
+}
+
 // ── FileItem 초기값 (설정 기반) ───────────────────────
 function newFileItem(file: File, options: PrintOptions): FileItem {
   const enabledMethods = getEnabledMethods(options)
@@ -310,7 +322,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
   const quals = getQualities(options, method)
   return {
     id: Math.random().toString(36).slice(2),
-    file, vol:null, sizeX:null, sizeY:null, sizeZ:null, objectCount:null,
+    file, vol:null, sizeX:null, sizeY:null, sizeZ:null, objectCount:null, manualReview:false,
     method,
     material: mat?.name || '',
     density:  mat?.density || 1.0,
@@ -388,6 +400,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   const overZ = !!matCfg && matCfg.maxZ > 0 && item.sizeZ != null && item.sizeZ > matCfg.maxZ
   const overSize = overX || overY || overZ
   const multiObject = item.objectCount != null && item.objectCount > 1
+  const needsManual = multiObject || overSize   // 자동 견적 불가 → 담당자 견적 요청 대상
 
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
@@ -474,30 +487,53 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               style={{...S.inp,fontSize:12,minHeight:54,resize:'vertical'}}/>
           </div>
 
-          {/* 예상 금액 */}
-          <div style={{background:'#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:11,color:'#6b7280'}}>예상 금액 (VAT 별도)</span>
-            <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(price):'담당자 산출'}</span>
-          </div>
-          {item.minPrice > 0 && (
-            <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>
-              이 소재의 최소 견적 금액은 {krw(item.minPrice)} 입니다.
-            </div>
-          )}
-          {hasMax && (
-            <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>
-              이 소재의 최대 출력 사이즈: {matCfg!.maxX>0?`X ${matCfg!.maxX}`:'X 무제한'} · {matCfg!.maxY>0?`Y ${matCfg!.maxY}`:'Y 무제한'} · {matCfg!.maxZ>0?`Z ${matCfg!.maxZ}`:'Z 무제한'} (mm)
-            </div>
-          )}
+          {/* 경고 (담당자 견적 필요 사유) */}
           {overSize && (
-            <div style={{marginTop:8,padding:'8px 12px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,fontSize:12,color:'#b91c1c',fontWeight:600}}>
-              출력 가능 사이즈를 초과합니다. (초과: {[overX?'X':'',overY?'Y':'',overZ?'Z':''].filter(Boolean).join('·')}축) 담당자와 분할 출력 등을 상담해 주세요.
+            <div style={{marginBottom:8,padding:'8px 12px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,fontSize:12,color:'#b91c1c',fontWeight:600}}>
+              출력 가능 사이즈를 초과합니다. (초과: {[overX?'X':'',overY?'Y':'',overZ?'Z':''].filter(Boolean).join('·')}축)
             </div>
           )}
           {multiObject && (
-            <div style={{marginTop:8,padding:'8px 12px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:8,fontSize:12,color:'#92400e',fontWeight:600}}>
-              개체가 1개가 아닙니다. (이 파일에서 {item.objectCount}개의 개체가 감지되었습니다.) 개체별로 파일을 나눠 올리시면 더 정확한 견적이 가능합니다.
+            <div style={{marginBottom:8,padding:'8px 12px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:8,fontSize:12,color:'#92400e',fontWeight:600}}>
+              개체가 1개가 아닙니다. (이 파일에서 {item.objectCount}개의 개체가 감지되었습니다.)
             </div>
+          )}
+
+          {needsManual ? (
+            /* 자동 견적 불가 → 담당자 견적 요청 */
+            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'12px 14px'}}>
+              <div style={{fontSize:12,color:'#1e40af',marginBottom:10,lineHeight:1.6}}>
+                이 파일은 자동 견적이 어려워 담당자 확인이 필요합니다. 아래 <b>담당자 견적 요청</b>을 눌러 주세요. (요청하셔야 다음 단계로 진행됩니다.)
+              </div>
+              {item.manualReview ? (
+                <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center',padding:'9px 0',background:'#dcfce7',borderRadius:7,color:'#15803d',fontSize:13,fontWeight:700}}>
+                  담당자 견적 요청됨
+                </div>
+              ) : (
+                <button onClick={()=>onChange(item.id,'manualReview',true as any)}
+                  style={{width:'100%',padding:'10px 0',background:'#2563eb',color:'#fff',border:'none',borderRadius:7,fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                  담당자 견적 요청
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* 예상 금액 */}
+              <div style={{background:'#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:11,color:'#6b7280'}}>예상 금액 (VAT 별도)</span>
+                <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(price):'담당자 산출'}</span>
+              </div>
+              {item.minPrice > 0 && (
+                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>
+                  이 소재의 최소 견적 금액은 {krw(item.minPrice)} 입니다.
+                </div>
+              )}
+              {hasMax && (
+                <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>
+                  이 소재의 최대 출력 사이즈: {matCfg!.maxX>0?`X ${matCfg!.maxX}`:'X 무제한'} · {matCfg!.maxY>0?`Y ${matCfg!.maxY}`:'Y 무제한'} · {matCfg!.maxZ>0?`Z ${matCfg!.maxZ}`:'Z 무제한'} (mm)
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -578,7 +614,7 @@ export default function Home() {
   }
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
-  const totalPrice = items.reduce((sum,it)=> sum + linePrice(it), 0)
+  const totalPrice = items.reduce((sum,it)=> sum + (itemNeedsManual(it, options) ? 0 : linePrice(it)), 0)
   // 오늘 접수가 기준 이상인 방식(혼잡 안내). 견적서에 포함된 방식만 대상.
   const congestedMethods = Array.from(new Set(items.map(it=>it.method)))
     .filter(mth => {
@@ -589,8 +625,8 @@ export default function Home() {
 
   const submit = async () => {
     if (!agreePrivacy) { alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.'); return }
-    const multi = items.find(it=>it.objectCount!=null&&it.objectCount>1)
-    if (multi) { alert(`"${multi.file.name}" 파일에 개체가 ${multi.objectCount}개 포함되어 있습니다. 개체가 1개인 STL 파일로 나눠서 올려주세요.`); return }
+    const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
+    if (pending) { alert(`"${pending.file.name}" 파일은 담당자 견적이 필요합니다. 파일 카드의 "담당자 견적 요청" 버튼을 눌러 주세요.`); return }
     setLoading(true)
     try {
       const primary = items[0]
@@ -602,14 +638,19 @@ export default function Home() {
       }).join('\n')
 
       // 모든 파일 정보 전송
-      const filesPayload = items.map(it => ({
-        fileName: it.file.name,
-        method: it.method, material: it.material, color: it.color, quality: it.quality,
-        qty: it.qty, vol: it.vol || 0,
-        sizeX: it.sizeX||0, sizeY: it.sizeY||0, sizeZ: it.sizeZ||0,
-        note: it.note || '',
-        price: it.vol ? linePrice(it) : null,
-      }))
+      const filesPayload = items.map(it => {
+        const manual = itemNeedsManual(it, options)
+        return {
+          fileName: it.file.name,
+          method: it.method, material: it.material, color: it.color, quality: it.quality,
+          qty: it.qty, vol: it.vol || 0,
+          sizeX: it.sizeX||0, sizeY: it.sizeY||0, sizeZ: it.sizeZ||0,
+          note: it.note || '',
+          price: (manual || !it.vol) ? null : linePrice(it),
+          manualReview: manual,
+          objectCount: it.objectCount,
+        }
+      })
 
       const payload = {
         name: customer.name, email: customer.email,
@@ -823,8 +864,8 @@ export default function Home() {
               <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
                 <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
                 <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>{
-                  const multi = items.find(it=>it.objectCount!=null&&it.objectCount>1)
-                  if(multi){alert(`"${multi.file.name}" 파일에 개체가 ${multi.objectCount}개 포함되어 있습니다.\n개체가 1개인 STL 파일로 각각 나눠서 올려주세요. 개체가 1개가 아니면 다음 단계로 진행할 수 없습니다.`);return}
+                  const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
+                  if(pending){alert(`"${pending.file.name}" 파일은 자동 견적이 어려워 담당자 확인이 필요합니다.\n파일 카드의 "담당자 견적 요청" 버튼을 누른 뒤 진행해 주세요.`);return}
                   setStep(3)
                 }}>견적 확인 →</button>
               </div>
@@ -860,7 +901,7 @@ export default function Home() {
                     <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
                     <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
                   </div>
-                  <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(linePrice(item)):'담당자 산출'}</span>
+                  <span style={{fontSize:15,fontWeight:800,color: itemNeedsManual(item,options)?'#2563eb':'#15803d'}}>{itemNeedsManual(item,options) ? '담당자 견적' : (item.vol?krw(linePrice(item)):'담당자 산출')}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
