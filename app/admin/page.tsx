@@ -6,6 +6,69 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown} from '@/lib/constants'
 import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
+// 관리자 전용: 접수된 파일의 견적 계산 근거(중간값) 표시 토글
+function CalcDetail({ calc }: { calc: any }) {
+  const [open, setOpen] = useState(false)
+  if (!calc) return null
+  const num = (n: any) => (Number(n) || 0).toLocaleString()
+  const won = (n: any) => (Math.round(Number(n) || 0)).toLocaleString() + '원'
+  const rows: [string, string][] = []
+  if (calc.method === 'FDM') {
+    rows.push(['방식', 'FDM (정밀 수식)'])
+    rows.push(['표면적', `${num(calc.surfaceArea)} cm²`])
+    rows.push(['전체 부피', `${num(calc.volume)} cm³`])
+    rows.push(['채움율(α)', `${num(calc.infill)} %`])
+    rows.push(['실효 외피두께', `${num(calc.shellThickness)} mm`])
+    rows.push(['외피 부피', `${num(calc.vShell)} cm³`])
+    rows.push(['내부 부피', `${num(calc.vInfill)} cm³`])
+    rows.push(['밀도', `${num(calc.density)} g/cm³`])
+    rows.push(['손실 보정계수', `× ${num(calc.lossFactor)}`])
+    rows.push(['수량', `${num(calc.qty)} 개`])
+    rows.push(['추정 무게', `${num(calc.mass)} g`])
+    rows.push(['단가계수', `${num(calc.coefficient)} 원/g`])
+    rows.push(['품질 보정값', `× ${num(calc.factor)}`])
+  } else {
+    rows.push(['방식', String(calc.method || '-')])
+    rows.push(['전체 부피', `${num(calc.volume)} cm³`])
+    rows.push(['밀도', `${num(calc.density)} g/cm³`])
+    rows.push(['추정 무게', `${num(calc.mass)} g`])
+    rows.push(['재료비율', `${num(calc.materialRatio)} %`])
+    rows.push(['수량', `${num(calc.qty)} 개`])
+    rows.push(['단가계수', `${num(calc.coefficient)} 원/g`])
+    rows.push(['품질 보정값', `× ${num(calc.factor)}`])
+  }
+  if (calc.minPrice) rows.push(['최소금액(하한)', won(calc.minPrice)])
+  const formula = calc.method === 'FDM'
+    ? '밀도 × (외피부피 + 내부부피 × 채움율) × 수량 × 손실계수 × 단가계수 × 품질보정값'
+    : '부피 × 밀도 × 단가계수 × 수량 × 품질보정값 × 재료비율'
+  return (
+    <div style={{ marginTop:8 }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ padding:'6px 12px', background:'#fff', color:'#6d28d9', border:'1px solid #ddd6fe', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+        {open ? '계산 상세 닫기' : '계산 상세'}
+      </button>
+      {open && (
+        <div style={{ marginTop:8, padding:'12px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 14px' }}>
+            {rows.map(([l,v]) => (
+              <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:12, borderBottom:'1px solid #f3e8ff', paddingBottom:3 }}>
+                <span style={{ color:'#6b7280' }}>{l}</span><span style={{ fontWeight:600 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e9d5ff', fontSize:11, color:'#6d28d9', lineHeight:1.6 }}>
+            {formula}
+          </div>
+          <div style={{ marginTop:6, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontSize:12, color:'#6b7280' }}>산출 예상가 (100원 단위 반올림)</span>
+            <span style={{ fontSize:15, fontWeight:800, color:'#6d28d9' }}>{won(calc.price)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // 관리자용 3D 미리보기 (버튼 클릭 시 저장된 파일을 불러와 렌더링)
 function AdminSTLViewer({ path, password }: { path: string; password: string }) {
   const [open, setOpen] = useState(false)
@@ -919,6 +982,7 @@ export default function AdminPage() {
                     </div>
                   )}
                   {fl.file_path && <AdminSTLViewer path={fl.file_path} password={password} />}
+                  {fl.calc && <CalcDetail calc={fl.calc} />}
                 </div>
               ))}
             </div>
