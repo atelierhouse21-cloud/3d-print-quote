@@ -74,9 +74,36 @@ function CalcDetail({ fl }: { fl: any }) {
               {formula}
             </div>
           )}
-          <div style={{ marginTop:6, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          {calc && (() => {
+            const n = (x: any) => (Number(x) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+            const lines: string[] = []
+            if (calc.method === 'FDM') {
+              const alpha = (Number(calc.infill) || 0) / 100
+              const infillPart = (Number(calc.vInfill) || 0) * alpha
+              const effVol = (Number(calc.vShell) || 0) + infillPart
+              lines.push(`① 내부 기여부피 = 내부부피 ${n(calc.vInfill)} × 채움율 ${n(calc.infill)}% = ${n(infillPart)} cm³`)
+              lines.push(`② 유효 부피 = 외피 ${n(calc.vShell)} + ${n(infillPart)} = ${n(effVol)} cm³`)
+              lines.push(`③ 추정 무게 = ${n(effVol)} × 밀도 ${n(calc.density)} × 수량 ${n(calc.qty)} × 손실 ${n(calc.lossFactor)} = ${n(calc.mass)} g`)
+              lines.push(`④ 금액 = 무게 ${n(calc.mass)} × 단가 ${n(calc.coefficient)}원/g × 품질보정 ${n(calc.factor)} = ${n((Number(calc.mass)||0)*(Number(calc.coefficient)||0)*(Number(calc.factor)||0))} 원`)
+            } else {
+              const mass = (Number(calc.volume)||0)*(Number(calc.density)||0)*(Number(calc.qty)||0)
+              const ratio = (Number(calc.materialRatio) || 100) / 100
+              lines.push(`① 추정 무게 = 부피 ${n(calc.volume)} × 밀도 ${n(calc.density)} × 수량 ${n(calc.qty)} = ${n(mass)} g`)
+              lines.push(`② 금액 = 무게 ${n(mass)} × 단가 ${n(calc.coefficient)}원/g × 품질보정 ${n(calc.factor)} × 재료비율 ${n(calc.materialRatio)}% = ${n(mass*(Number(calc.coefficient)||0)*(Number(calc.factor)||0)*ratio)} 원`)
+            }
+            lines.push(`⑤ 100원 단위 반올림${calc.minPrice ? ` 후 최소금액 ${won(calc.minPrice)}과 비교(큰 값 적용)` : ''} → ${won(calc.price)}`)
+            return (
+              <div style={{ marginTop:10, padding:'10px 12px', background:'#fff', border:'1px solid #e9d5ff', borderRadius:6 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'#6d28d9', marginBottom:6 }}>계산 과정 (값 대입)</div>
+                {lines.map((ln, i) => (
+                  <div key={i} style={{ fontSize:11.5, color:'#374151', lineHeight:1.7, wordBreak:'keep-all' }}>{ln}</div>
+                ))}
+              </div>
+            )
+          })()}
+          <div style={{ marginTop:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <span style={{ fontSize:12, color:'#6b7280' }}>산출 예상가 (100원 단위 반올림)</span>
-            <span style={{ fontSize:15, fontWeight:800, color:'#6d28d9' }}>{fl.price!=null ? won(fl.price) : (fl.manualReview ? '담당자 견적' : '-')}</span>
+            <span style={{ fontSize:15, fontWeight:800, color:'#6d28d9' }}>{calc ? won(calc.price) : (fl.price!=null ? won(fl.price) : (fl.manualReview ? '담당자 견적' : '-'))}</span>
           </div>
         </div>
       )}
