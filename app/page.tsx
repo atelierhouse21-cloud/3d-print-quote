@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, calcDays, krw, calcPriceV2, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE } from '@/lib/constants'
 import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
@@ -58,6 +58,17 @@ function calcVolume(v: Float32Array): number {
   for (let i = 0; i < v.length; i += 9)
     vol += (v[i]*(v[i+4]*v[i+8]-v[i+7]*v[i+5]) - v[i+1]*(v[i+3]*v[i+8]-v[i+6]*v[i+5]) + v[i+2]*(v[i+3]*v[i+7]-v[i+6]*v[i+4])) / 6
   return parseFloat((Math.abs(vol)/1000).toFixed(2))
+}
+// 표면적(cm²) — 삼각형 넓이의 합. 입력 좌표는 mm 기준이라 mm²→cm²(÷100)
+function calcSurfaceArea(v: Float32Array): number {
+  let area = 0
+  for (let i = 0; i < v.length; i += 9) {
+    const ax=v[i+3]-v[i], ay=v[i+4]-v[i+1], az=v[i+5]-v[i+2]
+    const bx=v[i+6]-v[i], by=v[i+7]-v[i+1], bz=v[i+8]-v[i+2]
+    const cx=ay*bz-az*by, cy=az*bx-ax*bz, cz=ax*by-ay*bx
+    area += Math.sqrt(cx*cx+cy*cy+cz*cz) / 2
+  }
+  return parseFloat((area/100).toFixed(2))
 }
 function calcBBox(v: Float32Array) {
   let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity
@@ -124,7 +135,7 @@ function countObjects(v: Float32Array): number {
 }
 
 // ── STL 뷰어 ──────────────────────────────────────────
-type STLInfo = { x:number; y:number; z:number; volume:number; objectCount:number|null }
+type STLInfo = { x:number; y:number; z:number; volume:number; surfaceArea:number; objectCount:number|null }
 function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const [info, setInfo] = useState<STLInfo|null>(null)
@@ -152,10 +163,11 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const verts = geometry.getAttribute('position').array as Float32Array
         const bbox = calcBBox(verts)
         const volume = calcVolume(verts)
+        const surfaceArea = calcSurfaceArea(verts)
         const triCount = verts.length / 9
         let objectCount: number | null = null
         if (triCount > 0 && triCount <= 800000) objectCount = countObjects(verts)
-        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, objectCount }
+        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, surfaceArea, objectCount }
         setInfo(si); onAnalyzed(si)
 
         const mount = mountRef.current
@@ -269,7 +281,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 type FileItem = {
   id:string; file:File
   vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null; manualReview:boolean
-  method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number; weightRatio:number
+  method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number; infill:number; surfaceArea:number|null
   qty:number; note:string
 }
 type CustomerForm = { name:string; email:string; company:string; phone:string; address:string; addressDetail:string }
@@ -294,9 +306,18 @@ function getEnabledMethods(options: PrintOptions): [string, typeof METHODS[strin
 }
 
 // 한 파일(라인)의 예상 금액: 가격식 결과에 소재별 최소 금액을 하한으로 적용
-function linePrice(it: FileItem): number {
+function linePrice(it: FileItem, options: PrintOptions): number {
   if (!it.vol) return 0
-  const p = calcPriceV2(it.vol, it.density, it.coefficient, it.qty, it.factor, it.weightRatio)
+  let p: number
+  if (it.method === 'FDM') {
+    const cfg = options['FDM']
+    const tEff = cfg?.shellThickness ?? 1.1
+    const kLoss = cfg?.lossFactor ?? 1.04
+    p = calcPriceFDM(it.vol, it.surfaceArea || 0, it.density, it.coefficient, it.qty, it.factor, it.infill, tEff, kLoss)
+  } else {
+    // 기타 방식(SLA/SLS/MJF)은 기존 방식 유지 — infill(%)이 재료비율 배수 역할(기본 100=×1.0)
+    p = calcPriceV2(it.vol, it.density, it.coefficient, it.qty, it.factor, (it.infill ?? 100) / 100)
+  }
   return Math.max(p, it.minPrice || 0)
 }
 
@@ -322,7 +343,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
   const quals = getQualities(options, method)
   return {
     id: Math.random().toString(36).slice(2),
-    file, vol:null, sizeX:null, sizeY:null, sizeZ:null, objectCount:null, manualReview:false,
+    file, vol:null, surfaceArea:null, sizeX:null, sizeY:null, sizeZ:null, objectCount:null, manualReview:false,
     method,
     material: mat?.name || '',
     density:  mat?.density || 1.0,
@@ -331,7 +352,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
     color:    colors[0] || '',
     quality:  quals[0]?.name || '',
     factor:   quals[0]?.factor || 1.0,
-    weightRatio: quals[0]?.weightRatio || 1.0,
+    infill:   quals[0]?.infill ?? 100,
     qty: 1, note: '',
   }
 }
@@ -377,7 +398,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
     onChange(item.id, 'color',    mat?.colors?.[0] || '')
     onChange(item.id, 'quality',  quals[0]?.name || '')
     onChange(item.id, 'factor',   quals[0]?.factor || 1.0)
-    onChange(item.id, 'weightRatio', quals[0]?.weightRatio || 1.0)
+    onChange(item.id, 'infill',   quals[0]?.infill ?? 100)
   }
   // 소재 변경 시 밀도·단가계수·색상 갱신 (색상은 소재에 종속)
   const updMaterial = (name: string) => {
@@ -390,7 +411,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   }
 
   const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
-  const price = linePrice(item)
+  const price = linePrice(item, options)
 
   // 선택 소재의 최대 출력 사이즈 + 초과 여부
   const matCfg = materials.find(m => m.name === item.material)
@@ -419,6 +440,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
           <div style={{padding:14,borderRight:isMobile?'none':'1px solid #e5e7eb',borderBottom:isMobile?'1px solid #e5e7eb':'none'}}>
             <STLViewer height={220} file={item.file} onAnalyzed={info=>{
               onChange(item.id,'vol',info.volume)
+              onChange(item.id,'surfaceArea',info.surfaceArea as any)
               onChange(item.id,'sizeX',info.x); onChange(item.id,'sizeY',info.y); onChange(item.id,'sizeZ',info.z)
               onChange(item.id,'objectCount',info.objectCount as any)
             }}/>
@@ -465,7 +487,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               {qualities.length>1 ? (
                 <select value={item.quality} onChange={e=>{
                   const q = qualities.find(x=>x.name===e.target.value)
-                  onChange(item.id,'quality',e.target.value); onChange(item.id,'factor',q?.factor||1.0); onChange(item.id,'weightRatio',q?.weightRatio||1.0)
+                  onChange(item.id,'quality',e.target.value); onChange(item.id,'factor',q?.factor||1.0); onChange(item.id,'infill',q?.infill??100)
                 }} style={{...S.inp,fontSize:12}}>
                   {qualities.map(q=><option key={q.name}>{q.name}</option>)}
                 </select>
@@ -625,7 +647,7 @@ export default function Home() {
   }
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
-  const totalPrice = items.reduce((sum,it)=> sum + (itemNeedsManual(it, options) ? 0 : linePrice(it)), 0)
+  const totalPrice = items.reduce((sum,it)=> sum + (itemNeedsManual(it, options) ? 0 : linePrice(it, options)), 0)
   // 오늘 접수가 기준 이상인 방식(혼잡 안내). 견적서에 포함된 방식만 대상.
   const congestedMethods = Array.from(new Set(items.map(it=>it.method)))
     .filter(mth => {
@@ -646,7 +668,7 @@ export default function Home() {
     setLoading(true)
     try {
       const primary = items[0]
-      const totalSupply = items.reduce((s,it)=> s + (it.vol ? linePrice(it) : 0), 0)
+      const totalSupply = items.reduce((s,it)=> s + (it.vol ? linePrice(it, options) : 0), 0)
       // 파일별 사양 + 요청사항을 하나의 note로도 합침(목록/하위호환)
       const finalNote = items.map((it,i)=>{
         const base = `[파일${i+1}: ${it.file.name} / ${METHODS[it.method]?.label||it.method} / ${it.material} / ${it.color} / ${it.quality} / ${it.qty}개]`
@@ -662,7 +684,7 @@ export default function Home() {
           qty: it.qty, vol: it.vol || 0,
           sizeX: it.sizeX||0, sizeY: it.sizeY||0, sizeZ: it.sizeZ||0,
           note: it.note || '',
-          price: (manual || !it.vol) ? null : linePrice(it),
+          price: (manual || !it.vol) ? null : linePrice(it, options),
           manualReview: manual,
           objectCount: it.objectCount,
         }
@@ -911,7 +933,7 @@ export default function Home() {
                     <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
                     <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
                   </div>
-                  <span style={{fontSize:15,fontWeight:800,color: itemNeedsManual(item,options)?'#2563eb':'#15803d'}}>{itemNeedsManual(item,options) ? '담당자 견적' : (item.vol?krw(linePrice(item)):'담당자 산출')}</span>
+                  <span style={{fontSize:15,fontWeight:800,color: itemNeedsManual(item,options)?'#2563eb':'#15803d'}}>{itemNeedsManual(item,options) ? '담당자 견적' : (item.vol?krw(linePrice(item, options)):'담당자 산출')}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
