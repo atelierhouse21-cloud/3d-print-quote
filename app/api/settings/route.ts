@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
-    return NextResponse.json(data?.value || {})
+    return NextResponse.json(data?.value || {}, { headers: { 'Cache-Control': 'no-store' } })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
