@@ -254,15 +254,15 @@ function MethodSettingCard({
   const addQual = () => {
     const n = newQual.trim(); if (!n) return
     if (cfg.qualities.some(q => q.name === n)) { alert('이미 있는 품질입니다.'); return }
-    setQualities([...cfg.qualities, { name:n, factor:1.0, weightRatio:1.0 }]); setNewQual('')
+    setQualities([...cfg.qualities, { name:n, factor:1.0, infill:100 }]); setNewQual('')
   }
   const removeQual = (i: number) => setQualities(cfg.qualities.filter((_, idx) => idx !== i))
   const updQualName = (i: number, name: string) => setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, name } : q))
   const updQualFactor = (i: number, val: string) => {
     const v = parseFloat(val); setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, factor: isNaN(v) ? 0 : v } : q))
   }
-  const updQualWeight = (i: number, val: string) => {
-    const v = parseFloat(val); setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, weightRatio: isNaN(v) ? 0 : v } : q))
+  const updQualInfill = (i: number, val: string) => {
+    const v = parseFloat(val); setQualities(cfg.qualities.map((q, idx) => idx===i ? { ...q, infill: isNaN(v) ? 0 : v } : q))
   }
 
   return (
@@ -308,11 +308,38 @@ function MethodSettingCard({
             </p>
           </div>
 
+          {method==='FDM' && (
+            <div style={{ marginBottom:18, padding:'12px 14px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#1e40af', marginBottom:8 }}>FDM 정밀 견적 설정</div>
+              <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:12, color:'#374151' }}>실효 외피두께</span>
+                  <input type="number" step="0.1" min={0} value={cfg.shellThickness ?? 1.1}
+                    onChange={e => onChange(method, { ...cfg, shellThickness: parseFloat(e.target.value) || 0 })}
+                    style={{ ...inpS, width:70, fontWeight:700 }} />
+                  <span style={{ fontSize:12, color:'#6b7280' }}>mm</span>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:12, color:'#374151' }}>손실 보정계수</span>
+                  <input type="number" step="0.01" min={1} value={cfg.lossFactor ?? 1.04}
+                    onChange={e => onChange(method, { ...cfg, lossFactor: parseFloat(e.target.value) || 1 })}
+                    style={{ ...inpS, width:70, fontWeight:700 }} />
+                </div>
+              </div>
+              <p style={{ fontSize:11, color:'#1e40af', margin:'8px 0 0', lineHeight:1.6 }}>
+                금액 = 밀도 × (외피부피 + 내부부피 × 채움율) × 수량 × 손실계수 × <b>단가계수(원/g)</b> × 품질보정값<br/>
+                외피부피 = 표면적 × 실효외피두께. 외벽 3줄·바닥/천장 4층이면 대략 1.0~1.2mm 권장, 손실계수는 1.03~1.05 권장.
+              </p>
+            </div>
+          )}
+
           {/* 소재 & 색상 & 단가계수 */}
           <div style={{ marginBottom:18 }}>
             <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 최소금액 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
             <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 10px' }}>
-              예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값 × <b>무게비</b> &nbsp;|&nbsp; 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).
+              {method==='FDM'
+                ? <>FDM 예상금액은 위 <b>FDM 정밀 견적 설정</b>의 수식으로 계산됩니다. <b>단가계수는 원/g(무게 기준)</b>입니다. 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).</>
+                : <>예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값 × 재료비율 &nbsp;|&nbsp; 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).</>}
             </p>
             {cfg.materials.map((mat, i) => (
               <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#fff' }}>
@@ -374,9 +401,9 @@ function MethodSettingCard({
             </div>
           </div>
 
-          {/* 품질 & 보정값 & 무게비 */}
+          {/* 품질 & 보정값 & 채움율 */}
           <div>
-            <div style={secTitle}>품질 &amp; 보정값 &amp; 무게비 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
+            <div style={secTitle}>품질 &amp; 보정값 &amp; {method==='FDM'?'채움율':'재료비율'} <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
             {cfg.qualities.map((q, i) => (
               <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
                 <input value={q.name} onChange={e => updQualName(i, e.target.value)} placeholder="품질명"
@@ -387,9 +414,10 @@ function MethodSettingCard({
                     onChange={e => updQualFactor(i, e.target.value)} style={{ ...inpS, width:60 }} />
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                  <span style={{ fontSize:11, color:'#6b7280' }}>무게비</span>
-                  <input type="number" step="0.05" min={0} value={q.weightRatio ?? 1}
-                    onChange={e => updQualWeight(i, e.target.value)} style={{ ...inpS, width:64, fontWeight:700 }} />
+                  <span style={{ fontSize:11, color:'#6b7280' }}>{method==='FDM'?'채움율':'재료비율'}</span>
+                  <input type="number" step="1" min={0} max={100} value={q.infill ?? 100}
+                    onChange={e => updQualInfill(i, e.target.value)} style={{ ...inpS, width:64, fontWeight:700 }} />
+                  <span style={{ fontSize:11, color:'#9ca3af' }}>%</span>
                 </div>
                 <button onClick={() => removeQual(i)} title="품질 삭제" style={delBtn}>×</button>
               </div>
@@ -401,7 +429,9 @@ function MethodSettingCard({
               <button onClick={addQual} style={addBtn}>+ 품질 추가</button>
             </div>
             <p style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>
-              보정값 1.0 = 기본가. <b>무게비</b>는 내부 채움(infill) 등 실제 재료 사용량 반영 계수입니다. 예) 15% 채움 0.4, 45% 채움 0.7 (1.0 = 겉부피 100% 기준).
+              보정값 1.0 = 기본가. {method==='FDM'
+                ? <><b>채움율(%)</b>은 내부 채움(infill) 비율입니다. 예) 15% 채움 → 15, 45% 채움 → 45. FDM은 외피(100%)+내부(채움율)로 재료 소모량을 계산합니다.</>
+                : <><b>재료비율(%)</b>은 부피 기준 금액에 곱하는 비율입니다(100 = 그대로).</>}
             </p>
           </div>
         </div>
