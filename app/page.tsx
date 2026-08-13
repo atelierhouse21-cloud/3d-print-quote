@@ -321,6 +321,33 @@ function linePrice(it: FileItem, options: PrintOptions): number {
   return Math.max(p, it.minPrice || 0)
 }
 
+// 관리자 확인용 계산 근거(중간값 포함). 제출 시 저장되어 관리자 상세에서 표시됨.
+function calcDetail(it: FileItem, options: PrintOptions): any {
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const density = it.density, coeff = it.coefficient, factor = it.factor, qty = it.qty
+  const vol = it.vol || 0, surf = it.surfaceArea || 0
+  const price = linePrice(it, options)
+  if (it.method === 'FDM') {
+    const cfg = options['FDM']
+    const tEff = cfg?.shellThickness ?? 1.1
+    const kLoss = cfg?.lossFactor ?? 1.04
+    const alpha = Math.min(Math.max(it.infill || 0, 0), 100) / 100
+    let vShell = surf * (Math.max(tEff, 0) / 10)
+    if (vShell > vol) vShell = vol
+    const vInfill = Math.max(vol - vShell, 0)
+    const mass = density * (vShell + vInfill * alpha) * qty * kLoss
+    return {
+      method: 'FDM', volume: vol, surfaceArea: surf, infill: it.infill,
+      shellThickness: tEff, lossFactor: kLoss, density, coefficient: coeff, factor, qty,
+      vShell: r2(vShell), vInfill: r2(vInfill), mass: r2(mass), minPrice: it.minPrice || 0, price,
+    }
+  }
+  return {
+    method: it.method, volume: vol, density, coefficient: coeff, factor, qty,
+    materialRatio: it.infill ?? 100, mass: r2(vol * density * qty), minPrice: it.minPrice || 0, price,
+  }
+}
+
 // 자동 견적이 어려워 담당자 수동 견적이 필요한 파일인지 판정 (다중 개체 또는 최대 출력 사이즈 초과)
 function itemNeedsManual(it: FileItem, options: PrintOptions): boolean {
   if (it.objectCount != null && it.objectCount > 1) return true
@@ -687,6 +714,8 @@ export default function Home() {
           price: (manual || !it.vol) ? null : linePrice(it, options),
           manualReview: manual,
           objectCount: it.objectCount,
+          surfaceArea: it.surfaceArea,
+          calc: (manual || !it.vol) ? null : calcDetail(it, options),
         }
       })
 
