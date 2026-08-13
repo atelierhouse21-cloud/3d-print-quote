@@ -91,8 +91,8 @@ export type Quote = {
 // v2 옵션 모델 (소재별 밀도·색상 / 품질별 보정값 / 방식별 단가계수)
 // ═══════════════════════════════════════════════════════════════
 export type MaterialCfg = { name: string; density: number; coefficient: number; minPrice: number; maxX: number; maxY: number; maxZ: number; colors: string[] }
-export type QualityCfg  = { name: string; factor: number; weightRatio: number }
-export type MethodCfg   = { enabled: boolean; dailyLimit: number; materials: MaterialCfg[]; qualities: QualityCfg[] }
+export type QualityCfg  = { name: string; factor: number; infill: number }  // infill: 채움율(%) — FDM은 새 수식의 α, 기타 방식은 재료비율(%)
+export type MethodCfg   = { enabled: boolean; dailyLimit: number; shellThickness: number; lossFactor: number; materials: MaterialCfg[]; qualities: QualityCfg[] }  // shellThickness: 실효 외피두께(mm), lossFactor: 손실보정계수 — FDM 전용
 export type PrintOptions = Record<string, MethodCfg>
 
 // 소재별 기본 단가 계수 (관리자 설정 값) — 관리자가 조정 가능
@@ -118,8 +118,8 @@ export function defaultMethodCfg(method: string): MethodCfg {
   const materials: MaterialCfg[] = (MATS[method] || []).map(name => ({
     name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...(COLS[method] || [])],
   }))
-  const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m, weightRatio: 1.0 }))
-  return { enabled: true, dailyLimit: 0, materials, qualities }
+  const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m, infill: 100 }))
+  return { enabled: true, dailyLimit: 0, shellThickness: 1.1, lossFactor: 1.04, materials, qualities }
 }
 
 // 전체 기본 설정
@@ -163,6 +163,8 @@ export function normalizeSettings(data: any): PrintOptions {
       r[m] = {
         enabled: cur.enabled !== false,
         dailyLimit: Number(cur.dailyLimit) || 0,
+        shellThickness: Number(cur.shellThickness) > 0 ? Number(cur.shellThickness) : 1.1,
+        lossFactor: Number(cur.lossFactor) > 0 ? Number(cur.lossFactor) : 1.04,
         materials: cur.materials.map((x: any) => ({
           name: String(x.name),
           density: Number(x.density) || 1.0,
@@ -173,7 +175,7 @@ export function normalizeSettings(data: any): PrintOptions {
           maxZ: Number(x.maxZ) || 0,
           colors: Array.isArray(x.colors) ? x.colors.map(String) : [],
         })),
-        qualities: cur.qualities.map((x: any) => ({ name: renameQ(String(x.name)), factor: Number(x.factor) || 1.0, weightRatio: Number(x.weightRatio) || 1.0 })),
+        qualities: cur.qualities.map((x: any) => ({ name: renameQ(String(x.name)), factor: Number(x.factor) || 1.0, infill: (x.infill != null ? Number(x.infill) : (x.weightRatio != null ? Number(x.weightRatio) * 100 : 100)) })),
       }
     } else {
       // 구버전(colors[], materials[], qualities[]) → 신버전 변환
@@ -184,10 +186,12 @@ export function normalizeSettings(data: any): PrintOptions {
       r[m] = {
         enabled: cur.enabled !== false,
         dailyLimit: Number(cur.dailyLimit) || 0,
+        shellThickness: Number(cur.shellThickness) > 0 ? Number(cur.shellThickness) : 1.1,
+        lossFactor: Number(cur.lossFactor) > 0 ? Number(cur.lossFactor) : 1.04,
         materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...oldColors] })),
         qualities: oldQuals.map(name => {
           const f = (QUAL[m] || []).find(q => q.v === name)
-          return { name: renameQ(name), factor: f ? f.m : 1.0, weightRatio: 1.0 }
+          return { name: renameQ(name), factor: f ? f.m : 1.0, infill: 100 }
         }),
       }
     }
@@ -199,6 +203,29 @@ export function normalizeSettings(data: any): PrintOptions {
 export function calcPriceV2(vol: number, density: number, coefficient: number, qty: number, qualityFactor: number, weightRatio: number = 1): number {
   const wr = (typeof weightRatio === 'number' && weightRatio > 0) ? weightRatio : 1
   const p = vol * density * coefficient * qty * qualityFactor * wr
+  if (!isFinite(p) || p <= 0) return 0
+  return Math.round(p / 100) * 100
+}
+
+// FDM 정밀 견적: 외피(100%)와 내부(채움율 α)를 분리해 재료 소모량을 추정.
+//   M = ρ × (Vshell + Vinfill×α) × qty × Kloss,  금액 = M × 단가계수(원/g) × 품질보정
+//   Vshell ≈ 표면적(cm²) × 실효외피두께(cm),  Vinfill = max(V − Vshell, 0)
+// vol: cm³, surfaceCm2: cm², shellThicknessMm: mm, infillPercent: 0~100
+export function calcPriceFDM(
+  vol: number, surfaceCm2: number, density: number, coefficient: number,
+  qty: number, qualityFactor: number, infillPercent: number,
+  shellThicknessMm: number, lossFactor: number
+): number {
+  const V = Math.max(Number(vol) || 0, 0)
+  const S = Math.max(Number(surfaceCm2) || 0, 0)
+  const alpha = Math.min(Math.max(Number(infillPercent) || 0, 0), 100) / 100
+  const tCm = Math.max(Number(shellThicknessMm) || 0, 0) / 10   // mm → cm
+  const kLoss = Number(lossFactor) > 0 ? Number(lossFactor) : 1
+  let vShell = S * tCm
+  if (vShell > V) vShell = V                    // 하한: 외피가 전체 부피를 넘을 수 없음
+  const vInfill = Math.max(V - vShell, 0)
+  const mass = (Number(density) || 0) * (vShell + vInfill * alpha) * (Number(qty) || 1) * kLoss
+  const p = mass * (Number(coefficient) || 0) * (Number(qualityFactor) || 1)
   if (!isFinite(p) || p <= 0) return 0
   return Math.round(p / 100) * 100
 }
