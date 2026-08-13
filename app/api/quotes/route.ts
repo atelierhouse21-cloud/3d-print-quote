@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin-auth'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { calcPrice, calcDays } from '@/lib/constants'
+import { calcPrice, calcDays, normalizeSettings, calcPriceFDM, calcPriceV2 } from '@/lib/constants'
 import { Resend } from 'resend'
 import crypto from 'crypto'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
+
+// 서버에서 파일별 계산 근거를 생성(고객 페이지 버전/캐시와 무관하게 항상 저장)
+function buildCalc(fl: any, options: any): any {
+  const method = fl.method
+  const cfg = options?.[method]
+  const vol = parseFloat(fl.vol) || 0
+  const qty = parseInt(fl.qty) || 1
+  const manual = fl.manualReview === true
+  if (!cfg || manual || !vol) return null
+  const mat = (cfg.materials || []).find((m: any) => m.name === fl.material)
+  const qual = (cfg.qualities || []).find((q: any) => q.name === fl.quality)
+  if (!mat || !qual) return null
+  const density = Number(mat.density) || 1
+  const coeff = Number(mat.coefficient) || 0
+  const minPrice = Number(mat.minPrice) || 0
+  const factor = Number(qual.factor) || 1
+  const infill = qual.infill != null ? Number(qual.infill) : 100
+  const r2 = (n: number) => Math.round(n * 100) / 100
+
+  if (method === 'FDM') {
+    const surf = Number(fl.surfaceArea) || 0
+    const tEff = Number(cfg.shellThickness) > 0 ? Number(cfg.shellThickness) : 1.1
+    const kLoss = Number(cfg.lossFactor) > 0 ? Number(cfg.lossFactor) : 1.04
+    const alpha = Math.min(Math.max(infill, 0), 100) / 100
+    let vShell = surf * (Math.max(tEff, 0) / 10)
+    if (vShell > vol) vShell = vol
+    const vInfill = Math.max(vol - vShell, 0)
+    const mass = density * (vShell + vInfill * alpha) * qty * kLoss
+    const price = Math.max(calcPriceFDM(vol, surf, density, coeff, qty, factor, infill, tEff, kLoss), minPrice)
+    return { method: 'FDM', volume: vol, surfaceArea: surf, infill, shellThickness: tEff, lossFactor: kLoss,
+      density, coefficient: coeff, factor, qty, vShell: r2(vShell), vInfill: r2(vInfill), mass: r2(mass), minPrice, price }
+  }
+  const price = Math.max(calcPriceV2(vol, density, coeff, qty, factor, infill / 100), minPrice)
+  return { method, volume: vol, density, coefficient: coeff, factor, qty,
+    materialRatio: infill, mass: r2(vol * density * qty), minPrice, price }
+}
 
 // 이메일 HTML에 들어가는 사용자 입력값 이스케이프(주입 방지)
 const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string))
@@ -65,6 +101,13 @@ export async function POST(req: NextRequest) {
       ? body.files
       : (fileName ? [{ fileName, method, material, color, quality, qty, vol, sizeX: body.sizeX, sizeY: body.sizeY, sizeZ: body.sizeZ, note: '', price: auto_price }] : [])
 
+    // 계산 근거를 서버에서 생성하기 위해 현재 옵션 설정 로드
+    let printOptions: any = {}
+    try {
+      const { data: setRow } = await supabaseAdmin.from('settings').select('value').eq('key', 'print_options').single()
+      printOptions = normalizeSettings(setRow?.value || {})
+    } catch { printOptions = {} }
+
     // 견적번호 생성 + 저장 (동시 접수로 번호가 겹치면 새 번호로 재시도)
     let data: any = null
     let quote_no = ''
@@ -106,7 +149,7 @@ export async function POST(req: NextRequest) {
           manualReview: fl.manualReview === true,
           objectCount: (fl.objectCount !== null && fl.objectCount !== undefined) ? Number(fl.objectCount) : null,
           surfaceArea: (fl.surfaceArea !== null && fl.surfaceArea !== undefined) ? Number(fl.surfaceArea) : null,
-          calc: (fl.calc && typeof fl.calc === 'object') ? fl.calc : null,
+          calc: (fl.calc && typeof fl.calc === 'object') ? fl.calc : buildCalc(fl, printOptions),
         }
       })
       const first = itemsData[0] || null
