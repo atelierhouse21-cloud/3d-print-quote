@@ -563,7 +563,7 @@ export default function Home() {
 
   // ── 설정 로드 (페이지 시작 시) ──
   useEffect(() => {
-    fetch('/api/settings')
+    fetch(`/api/settings?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(raw => setOptions(normalizeSettings(raw)))
       .catch(() => setOptions(defaultSettings()))
