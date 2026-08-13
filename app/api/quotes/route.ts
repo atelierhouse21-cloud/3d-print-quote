@@ -105,6 +105,8 @@ export async function POST(req: NextRequest) {
           price: (fl.price !== null && fl.price !== undefined && fl.price !== '') ? Number(fl.price) : null,
           manualReview: fl.manualReview === true,
           objectCount: (fl.objectCount !== null && fl.objectCount !== undefined) ? Number(fl.objectCount) : null,
+          surfaceArea: (fl.surfaceArea !== null && fl.surfaceArea !== undefined) ? Number(fl.surfaceArea) : null,
+          calc: (fl.calc && typeof fl.calc === 'object') ? fl.calc : null,
         }
       })
       const first = itemsData[0] || null
