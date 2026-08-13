@@ -626,6 +626,11 @@ export default function Home() {
     .map(mth => METHODS[mth]?.label || mth)
 
   const submit = async () => {
+    if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email.trim())){alert('이메일 형식이 올바르지 않습니다.');return}
+    if(!customer.phone.trim()){alert('연락처는 필수입니다.');return}
+    if(!/^0\d{8,10}$/.test(customer.phone.replace(/[^0-9]/g,''))){alert('연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)');return}
+    if(!customer.address.trim()){alert('수령 주소는 필수입니다.');return}
     if (!agreePrivacy) { alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.'); return }
     const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
     if (pending) { alert(`"${pending.file.name}" 파일은 담당자 견적이 필요합니다. 파일 카드의 "담당자 견적 요청" 버튼을 눌러 주세요.`); return }
@@ -701,8 +706,8 @@ export default function Home() {
     finally { setLoading(false) }
   }
 
-  const STEP_LABELS = ['고객 정보','파일 업로드 & 출력 설정','견적 확인']
-  const STEP_LABELS_SHORT = ['고객 정보','파일 & 설정','견적 확인']
+  const STEP_LABELS = ['파일 업로드 & 출력 설정','견적 확인','고객 정보']
+  const STEP_LABELS_SHORT = ['파일 & 설정','견적 확인','고객 정보']
 
   // 설정 로드 중 스피너
   if (!optLoaded) return (
@@ -752,8 +757,9 @@ export default function Home() {
         <div style={{...S.body,padding:isMobile?'18px 14px':'24px 24px'}}>
 
           {/* ── STEP 1 ── */}
-          {step===1&&<>
-            <p style={{color:'#6b7280',marginBottom:20,fontSize:13}}>견적 요청자 정보를 입력해 주세요.</p>
+          {/* ── STEP 3: 고객 정보 ── */}
+          {step===3&&<>
+            <p style={{color:'#6b7280',marginBottom:20,fontSize:13}}>견적 요청자 정보를 입력하고 제출해 주세요.</p>
             <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:14,marginBottom:14}}>
               <div style={S.grp}><label style={S.lbl}>이름 *</label><input type="text" value={customer.name} onChange={e=>updC('name',e.target.value)} placeholder="홍길동" style={S.inp}/></div>
               <div style={S.grp}><label style={S.lbl}>이메일 *</label><input type="email" value={customer.email} onChange={e=>updC('email',e.target.value)} placeholder="example@mail.com" style={S.inp}/></div>
@@ -819,24 +825,31 @@ export default function Home() {
               )}
             </div>
 
-            <div style={{display:'flex',justifyContent:'flex-end'}}>
-              <button style={{...S.btn,background:'#2563eb',color:'#fff'}}
-                onClick={()=>{
-                  if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}
-                  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email.trim())){alert('이메일 형식이 올바르지 않습니다.');return}
-                  if(!customer.phone.trim()){alert('연락처는 필수입니다.');return}
-                  if(!/^0\d{8,10}$/.test(customer.phone.replace(/[^0-9]/g,''))){alert('연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)');return}
-                  if(!customer.address.trim()){alert('수령 주소는 필수입니다.');return}
-                  if(!agreePrivacy){alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.');return}
-                  setStep(2)
-                }}>
-                다음 단계 →
+            {/* 증빙 요청 (선택) */}
+            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:20}}>
+              <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}}>증빙 요청 (선택)</div>
+              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,marginBottom:8}}>
+                <input type="checkbox" checked={wantCashReceipt} onChange={e=>setWantCashReceipt(e.target.checked)}
+                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                <span>현금영수증 발행을 요청합니다.</span>
+              </label>
+              <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',fontSize:13}}>
+                <input type="checkbox" checked={wantTaxInvoice} onChange={e=>setWantTaxInvoice(e.target.checked)}
+                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer',marginTop:1}}/>
+                <span>세금계산서 발행을 요청합니다. <span style={{color:'#6b7280',fontSize:12}}>(영업일 이내 담당자가 별도로 연락드려 발행에 필요한 자료를 안내드립니다.)</span></span>
+              </label>
+            </div>
+
+            <div style={{display:'flex',justifyContent:'space-between'}}>
+              <button style={S.sBtn} onClick={()=>setStep(2)}>← 이전</button>
+              <button style={{...S.btn,background:(loading||!agreePrivacy)?'#9ca3af':'#16a34a',color:'#fff',cursor:loading?'wait':(!agreePrivacy?'not-allowed':'pointer')}} onClick={submit} disabled={loading||!agreePrivacy}>
+                {loading?'제출 중...':'견적 요청 제출'}
               </button>
             </div>
           </>}
 
-          {/* ── STEP 2 ── */}
-          {step===2&&<>
+          {/* ── STEP 1: 파일 업로드 & 출력 설정 ── */}
+          {step===1&&<>
             <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>출력할 파일을 업로드하고 각 파일의 출력 설정을 선택해 주세요.</p>
             <input ref={fileRef} type="file" accept={isMobile?undefined:'.stl'} style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
             <div
@@ -864,39 +877,24 @@ export default function Home() {
               <FileItemCard key={item.id} item={item} idx={idx} options={options} onChange={updateItem} onRemove={removeItem} isMobile={isMobile}/>
             ))}
             {items.length>0&&(
-              <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
-                <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
+              <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
                 <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>{
                   const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
                   if(pending){alert(`"${pending.file.name}" 파일은 자동 견적이 어려워 담당자 확인이 필요합니다.\n파일 카드의 "담당자 견적 요청" 버튼을 누른 뒤 진행해 주세요.`);return}
-                  setStep(3)
+                  setStep(2)
                 }}>견적 확인 →</button>
-              </div>
-            )}
-            {items.length===0&&(
-              <div style={{display:'flex',justifyContent:'flex-start',marginTop:8}}>
-                <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
               </div>
             )}
           </>}
 
-          {/* ── STEP 3 ── */}
-          {step===3&&<>
-            <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>아래 내용을 확인하고 견적 요청을 제출해 주세요.</p>
+          {/* ── STEP 2: 견적 확인 ── */}
+          {step===2&&<>
+            <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>견적 내용을 확인하고 다음 단계로 진행해 주세요.</p>
             {congestedMethods.length>0 && (
               <div style={{display:'flex',gap:10,padding:'12px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:14,alignItems:'flex-start'}}>
                 <span></span><span>현재 작업 대기가 많아 작업 소요에 시간이 더 소요될 수 있습니다{congestedMethods.length>0?` (${congestedMethods.join(', ')})`:''}. 접수는 정상적으로 진행됩니다.</span>
               </div>
             )}
-            <div style={{background:'#f9fafb',borderRadius:10,padding:'12px 16px',marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:8}}>고객 정보</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                {[['이름',customer.name],['이메일',customer.email],['업체명',customer.company||'개인'],['연락처',customer.phone||'-'],['수령 주소',[customer.address,customer.addressDetail].filter(s=>s&&s.trim()).join(' ')||'-']].map(([l,v])=>(
-                  <div key={l}><span style={{fontSize:11,color:'#9ca3af'}}>{l}: </span><span style={{fontSize:13,fontWeight:600}}>{v}</span></div>
-                ))}
-              </div>
-            </div>
-
             {items.map((item,idx)=>(
               <div key={item.id} style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 16px',marginBottom:10}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
@@ -942,29 +940,13 @@ export default function Home() {
               </div>
             )})()}
 
-            <div style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 14px',marginBottom:16}}>
-              <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}}>증빙 요청 (선택)</div>
-              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,marginBottom:8}}>
-                <input type="checkbox" checked={wantCashReceipt} onChange={e=>setWantCashReceipt(e.target.checked)}
-                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
-                <span>현금영수증 발행을 요청합니다.</span>
-              </label>
-              <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',fontSize:13}}>
-                <input type="checkbox" checked={wantTaxInvoice} onChange={e=>setWantTaxInvoice(e.target.checked)}
-                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer',marginTop:1}}/>
-                <span>세금계산서 발행을 요청합니다. <span style={{color:'#6b7280',fontSize:12}}>(영업일 이내 담당자가 별도로 연락드려 발행에 필요한 자료를 안내드립니다.)</span></span>
-              </label>
-            </div>
-
             <div style={{display:'flex',gap:10,padding:'11px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:20,alignItems:'flex-start'}}>
               <span></span><span>위 금액은 자동 계산 예상 견적입니다. 담당자 검토 후 <b>확정 견적을 이메일로 안내</b>드립니다.</span>
             </div>
 
             <div style={{display:'flex',justifyContent:'space-between'}}>
-              <button style={S.sBtn} onClick={()=>setStep(2)}>← 이전</button>
-              <button style={{...S.btn,background:(loading||!agreePrivacy)?'#9ca3af':'#16a34a',color:'#fff',cursor:loading?'wait':(!agreePrivacy?'not-allowed':'pointer')}} onClick={submit} disabled={loading||!agreePrivacy}>
-                {loading?'제출 중...':'견적 요청 제출'}
-              </button>
+              <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
+              <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>setStep(3)}>다음 단계 →</button>
             </div>
           </>}
 
