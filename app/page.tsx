@@ -184,13 +184,13 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         renderer.domElement.style.display = 'block'
         mount.appendChild(renderer.domElement)
 
-        // 조명 (그림자 없음)
-        scene.add(new THREE.AmbientLight(0xffffff, 0.7))
-        const d1 = new THREE.DirectionalLight(0xffffff, 0.75); d1.position.set(1, 1.4, 1); scene.add(d1)
-        const d2 = new THREE.DirectionalLight(0xffffff, 0.35); d2.position.set(-1, 0.4, -0.9); scene.add(d2)
+        // 조명 (그림자 없음) — 음영 대비를 높여 입체감 강조
+        scene.add(new THREE.AmbientLight(0xffffff, 0.45))
+        const d1 = new THREE.DirectionalLight(0xffffff, 1.25); d1.position.set(1, 1.4, 1); scene.add(d1)
+        const d2 = new THREE.DirectionalLight(0xffffff, 0.4); d2.position.set(-1, 0.4, -0.9); scene.add(d2)
 
         // 남색 계열 단색 면
-        material = new THREE.MeshStandardMaterial({ color: 0x3a5a92, metalness: 0.15, roughness: 0.6 })
+        material = new THREE.MeshStandardMaterial({ color: 0x3a5a92, metalness: 0.2, roughness: 0.5 })
         const mesh = new THREE.Mesh(geometry, material)
         scene.add(mesh)
 
@@ -574,6 +574,15 @@ export default function Home() {
       .then(d => setDailyCounts(d.counts || {}))
       .catch(() => setDailyCounts({}))
   }, [])
+
+  // 견적 확인 단계에 들어갈 때마다 오늘 접수 건수를 다시 조회(항상 최신 혼잡 안내)
+  useEffect(() => {
+    if (step !== 2) return
+    fetch(`/api/daily-count?t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setDailyCounts(d.counts || {}))
+      .catch(() => {})
+  }, [step])
 
   const updC = (k: keyof CustomerForm, v: string) => setCustomer(p=>({...p,[k]:v}))
 
