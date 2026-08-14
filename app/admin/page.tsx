@@ -984,6 +984,7 @@ export default function AdminPage() {
           <Info label="마케팅 활용 동의" value={sel.marketing_consent ? '동의' : '미동의'} />
           <Info label="현금영수증" value={(sel as any).billing?.cashReceipt ? '요청함' : '요청 안함'} />
           <Info label="세금계산서" value={(sel as any).billing?.taxInvoice ? '요청함 (담당자 연락 필요)' : '요청 안함'} />
+          <Info label="취소·교환·환불 규정 확인" value={(sel as any).billing?.refundPolicyConfirmed ? '확인함' : '-'} />
         </Section>
         <Section title="업로드 파일">
           {Array.isArray((sel as any).items) && (sel as any).items.length > 0 ? (
