@@ -692,7 +692,7 @@ export default function Home() {
     if(!/^0\d{8,10}$/.test(customer.phone.replace(/[^0-9]/g,''))){alert('연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)');return}
     if(!customer.address.trim()){alert('수령 주소는 필수입니다.');return}
     if (!agreePrivacy) { alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.'); return }
-    if (!agreeRefund) { alert('취소·교환·환불 규정 확인(필수)에 체크해 주세요.'); return }
+    if (!agreeRefund) { alert('취소·교환·환불 정책 확인(필수)에 체크해 주세요.'); return }
     const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
     if (pending) { alert(`"${pending.file.name}" 파일은 담당자 견적이 필요합니다. 파일 카드의 "담당자 견적 요청" 버튼을 눌러 주세요.`); return }
     setLoading(true)
@@ -894,7 +894,7 @@ export default function Home() {
                 <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
                   <input type="checkbox" checked={agreeRefund} onChange={e=>setAgreeRefund(e.target.checked)}
                     style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
-                  <span><span style={{color:'#dc2626'}}>[필수]</span> 취소·교환·환불 규정을 확인하였습니다.</span>
+                  <span><span style={{color:'#dc2626'}}>[필수]</span> 취소·교환·환불 정책을 확인하였습니다.</span>
                 </label>
                 <button type="button" onClick={()=>setShowRefundBox(v=>!v)}
                   style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
@@ -906,9 +906,8 @@ export default function Home() {
                   <div><b>· 주문 제작 상품 안내:</b> 고객 파일 기반 맞춤 출력 상품으로, <b>제작 착수 후에는 단순 변심에 의한 취소·환불이 제한</b>될 수 있습니다.</div>
                   <div><b>· 제작 착수 전:</b> 취소 및 전액 환불이 가능합니다.</div>
                   <div><b>· 판매자 귀책(출력 불량·파손·오제작):</b> 재제작 또는 환불해 드립니다.</div>
-                  <div><b>· 교환·환불 신청 기한:</b> 물품 수령 후 7일 이내 접수해 주세요(관련 법령 기준).</div>
                   <div><b>· 고객 제공 파일의 오류·결함</b>으로 인한 결과물은 교환·환불이 어려울 수 있습니다.</div>
-                  <div style={{marginTop:6}}>자세한 개인정보 처리 내용은 <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{color:'#2563eb',textDecoration:'underline'}}>개인정보처리방침 전문 보기</a>에서 확인하실 수 있습니다.</div>
+                  <div style={{marginTop:6}}>자세한 내용은 <a href="/refund-policy" target="_blank" rel="noopener noreferrer" style={{color:'#2563eb',textDecoration:'underline',fontWeight:600}}>취소·교환·환불 정책 전문 보기</a>에서 확인하실 수 있습니다.</div>
                 </div>
               )}
             </div>
