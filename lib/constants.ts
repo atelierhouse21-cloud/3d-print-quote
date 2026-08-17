@@ -92,7 +92,7 @@ export type Quote = {
 // ═══════════════════════════════════════════════════════════════
 export type MaterialCfg = { name: string; density: number; coefficient: number; minPrice: number; maxX: number; maxY: number; maxZ: number; colors: string[] }
 export type QualityCfg  = { name: string; factor: number; infill: number }  // infill: 채움율(%) — FDM은 새 수식의 α, 기타 방식은 재료비율(%)
-export type MethodCfg   = { enabled: boolean; dailyLimit: number; shellThickness: number; lossFactor: number; materials: MaterialCfg[]; qualities: QualityCfg[] }  // shellThickness: 실효 외피두께(mm), lossFactor: 손실보정계수 — FDM 전용
+export type MethodCfg   = { enabled: boolean; dailyLimit: number; capacityLimit: number; shellThickness: number; lossFactor: number; materials: MaterialCfg[]; qualities: QualityCfg[] }  // dailyLimit: 혼잡 안내 기준(진행 중 작업 수), capacityLimit: 접수 마감 기준(진행 중 작업 수), shellThickness/lossFactor: FDM 전용
 export type PrintOptions = Record<string, MethodCfg>
 
 // 소재별 기본 단가 계수 (관리자 설정 값) — 관리자가 조정 가능
@@ -119,7 +119,7 @@ export function defaultMethodCfg(method: string): MethodCfg {
     name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...(COLS[method] || [])],
   }))
   const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m, infill: 100 }))
-  return { enabled: true, dailyLimit: 0, shellThickness: 1.1, lossFactor: 1.04, materials, qualities }
+  return { enabled: true, dailyLimit: 0, capacityLimit: 0, shellThickness: 1.1, lossFactor: 1.04, materials, qualities }
 }
 
 // 전체 기본 설정
@@ -163,6 +163,7 @@ export function normalizeSettings(data: any): PrintOptions {
       r[m] = {
         enabled: cur.enabled !== false,
         dailyLimit: Number(cur.dailyLimit) || 0,
+        capacityLimit: Number(cur.capacityLimit) || 0,
         shellThickness: Number(cur.shellThickness) > 0 ? Number(cur.shellThickness) : 1.1,
         lossFactor: Number(cur.lossFactor) > 0 ? Number(cur.lossFactor) : 1.04,
         materials: cur.materials.map((x: any) => ({
@@ -186,6 +187,7 @@ export function normalizeSettings(data: any): PrintOptions {
       r[m] = {
         enabled: cur.enabled !== false,
         dailyLimit: Number(cur.dailyLimit) || 0,
+        capacityLimit: Number(cur.capacityLimit) || 0,
         shellThickness: Number(cur.shellThickness) > 0 ? Number(cur.shellThickness) : 1.1,
         lossFactor: Number(cur.lossFactor) > 0 ? Number(cur.lossFactor) : 1.04,
         materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...oldColors] })),
@@ -245,3 +247,6 @@ export function priceBreakdown(supply: number | null | undefined) {
   const shipping = s > 0 ? SHIPPING_FEE : 0
   return { supply: s, vat, shipping, total: s + vat + shipping }
 }
+
+// 진행 중(배송준비 단계 미만)으로 간주하는 상태 — 혼잡/마감 판정의 기준
+export const ACTIVE_STATUSES = ['pending', 'approved', 'payment_confirmed', 'printing', 'post_processing']
