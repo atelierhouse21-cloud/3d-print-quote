@@ -399,17 +399,27 @@ function MethodSettingCard({
 
       {cfg.enabled && (
         <div style={{ padding:'16px 18px' }}>
-          {/* 하루 접수 혼잡 안내 기준 */}
+          {/* 혼잡 안내 / 접수 마감 기준 (진행 중 작업 수 기준) */}
           <div style={{ marginBottom:18, padding:'12px 14px', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <span style={{ fontSize:13, fontWeight:700, color:'#92400e' }}>하루 접수 혼잡 안내 기준</span>
+              <span style={{ fontSize:13, fontWeight:700, color:'#92400e' }}>혼잡 안내 기준</span>
               <input type="number" step="1" min={0} value={cfg.dailyLimit ?? 0}
                 onChange={e => onChange(method, { ...cfg, dailyLimit: parseInt(e.target.value) || 0 })}
                 style={{ ...inpS, width:80, fontWeight:700 }} />
-              <span style={{ fontSize:12, color:'#92400e' }}>건</span>
+              <span style={{ fontSize:12, color:'#92400e' }}>건 이상 진행 중</span>
             </div>
-            <p style={{ fontSize:11, color:'#b45309', margin:'8px 0 0' }}>
-              오늘 이 방식의 접수가 기준 건수 이상이면, 고객 화면에 &quot;작업 대기가 많아 시간이 더 걸릴 수 있다&quot;는 안내가 표시됩니다. 접수는 정상 진행됩니다. (0 = 안내 없음)
+            <p style={{ fontSize:11, color:'#b45309', margin:'8px 0 12px' }}>
+              현재 진행 중(배송 준비 단계 전)인 이 방식 작업이 기준 건수 이상이면, 고객 화면에 &quot;작업 대기가 많아 시간이 더 걸릴 수 있다&quot;는 안내가 표시됩니다. 접수는 정상 진행됩니다. (0 = 안내 없음)
+            </p>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', paddingTop:12, borderTop:'1px solid #fde68a' }}>
+              <span style={{ fontSize:13, fontWeight:700, color:'#b91c1c' }}>접수 마감 기준</span>
+              <input type="number" step="1" min={0} value={cfg.capacityLimit ?? 0}
+                onChange={e => onChange(method, { ...cfg, capacityLimit: parseInt(e.target.value) || 0 })}
+                style={{ ...inpS, width:80, fontWeight:700 }} />
+              <span style={{ fontSize:12, color:'#b91c1c' }}>건 이상 진행 중</span>
+            </div>
+            <p style={{ fontSize:11, color:'#b91c1c', margin:'8px 0 0' }}>
+              현재 진행 중인 이 방식 작업이 기준 건수 이상이면, 고객이 이 방식으로 <b>접수할 수 없습니다</b>(1단계에서 &quot;접수 마감&quot; 표시). 작업이 처리되어 진행 중 건수가 줄면 자동으로 다시 접수가 열립니다. (0 = 마감 없음)
             </p>
           </div>
 
@@ -558,7 +568,7 @@ export default function AdminPage() {
   const [filter, setFilter]         = useState<'all'|'pending'|'approved'|'rejected'|'shipped'|'as'|'deleted'>('all')
   const [tab, setTab]               = useState<'quotes'|'settings'>('quotes')
   const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
-  const [dailyOrderLimit, setDailyOrderLimit] = useState<number>(4)
+  const [settingsDirty, setSettingsDirty] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
   const [showIssueForm, setShowIssueForm] = useState(false)
   const [issueDraft, setIssueDraft]     = useState('')
@@ -622,12 +632,7 @@ export default function AdminPage() {
       const raw  = await res.json()
       const normalized = normalizeSettings(raw)
       setEditSettings(normalized)
-      // 1일 접수 제한(전체 총량) 로드
-      try {
-        const r2 = await fetch('/api/settings?key=daily_order_limit')
-        const v2 = await r2.json()
-        setDailyOrderLimit(Number(v2?.limit) > 0 ? Number(v2.limit) : 4)
-      } catch { setDailyOrderLimit(4) }
+      setSettingsDirty(false)
     } catch(e) { console.error(e) }
   }
 
@@ -662,12 +667,7 @@ export default function AdminPage() {
       })
       const json = await res.json()
       if (!json.ok && json.error) throw new Error(json.error)
-      // 1일 접수 제한 저장
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
-        body: JSON.stringify({ key: 'daily_order_limit', value: { limit: Number(dailyOrderLimit) > 0 ? Number(dailyOrderLimit) : 0 } })
-      })
+      setSettingsDirty(false)
       alert('설정이 저장되었습니다. 고객 견적 페이지에 즉시 반영됩니다.')
       loadSettings()
     } catch(e:any) { alert('오류: ' + e.message) }
@@ -676,6 +676,7 @@ export default function AdminPage() {
 
   const updateMethodCfg = (method: string, cfg: MethodCfg) => {
     setEditSettings((prev) => prev ? ({ ...prev, [method]: cfg }) : prev)
+    setSettingsDirty(true)
   }
 
   const decide = async (status: 'approved'|'rejected') => {
@@ -1327,31 +1328,24 @@ export default function AdminPage() {
                     소재별 단가계수·밀도·색상, 품질별 보정값을 직접 추가/삭제합니다.
                   </p>
                 </div>
-                <button onClick={saveSettings} disabled={savingSettings} style={{
-                  padding:'10px 24px', background: savingSettings?'#9ca3af':'#2563eb', color:'#fff',
-                  border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor: savingSettings?'wait':'pointer'
-                }}>
-                  {savingSettings ? '저장 중...' : '저장'}
-                </button>
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:20,
+                    background: settingsDirty ? '#fef3c7' : '#dcfce7',
+                    color: settingsDirty ? '#92400e' : '#15803d',
+                    border: `1px solid ${settingsDirty ? '#fcd34d' : '#86efac'}` }}>
+                    {settingsDirty ? '● 저장되지 않은 변경 있음' : '✓ 모든 변경 저장됨'}
+                  </span>
+                  <button onClick={saveSettings} disabled={savingSettings || !settingsDirty} style={{
+                    padding:'10px 24px', background: (savingSettings || !settingsDirty)?'#9ca3af':'#2563eb', color:'#fff',
+                    border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor: savingSettings?'wait':(!settingsDirty?'default':'pointer')
+                  }}>
+                    {savingSettings ? '저장 중...' : '저장'}
+                  </button>
+                </div>
               </div>
 
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:13, color:'#1e40af' }}>
                 ℹ저장 즉시 고객 견적 페이지에 반영됩니다. 비활성화된 방식은 고객에게 표시되지 않습니다.
-              </div>
-
-              {/* 1일 접수 제한 (전체 총량) — 혼잡 안내 기준과 별개로 접수 자체를 차단 */}
-              <div style={{ background:'#fff', border:'1px solid #fecaca', borderRadius:12, padding:18, marginBottom:12 }}>
-                <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>1일 접수 제한 (전체)</div>
-                <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
-                  하루 전체 견적 접수 건수가 이 수에 도달하면 고객이 제출할 수 없고 &quot;오늘 접수 마감&quot; 안내가 표시됩니다(방식 무관 총합 기준). 0으로 두면 제한하지 않습니다.
-                </p>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:13, color:'#374151' }}>하루 최대</span>
-                  <input type="number" step="1" min={0} value={dailyOrderLimit}
-                    onChange={e => setDailyOrderLimit(parseInt(e.target.value) || 0)}
-                    style={{ width:80, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' }} />
-                  <span style={{ fontSize:13, color:'#374151' }}>건</span>
-                </div>
               </div>
 
               {(['FDM','SLA','SLS','MJF'] as const).map(method => (
