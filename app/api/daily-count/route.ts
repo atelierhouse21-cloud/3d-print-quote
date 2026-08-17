@@ -1,26 +1,22 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
+import { ACTIVE_STATUSES } from '@/lib/constants'
 
-// 오늘(한국시간) 방식별 접수 건수 — 혼잡 안내용. 항상 최신값 반환.
+// 현재 "진행 중"(배송준비 단계 미만) 작업 수를 방식별로 반환 — 혼잡/마감 안내 기준.
+// 당일 접수 누적이 아니라, 지금 실제로 밀려 있는 작업량을 셈.
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export async function GET() {
-  // 한국시간(UTC+9) 자정 = UTC 기준 시각 계산
-  const now = new Date()
-  const kst = new Date(now.getTime() + 9 * 3600 * 1000)
-  const y = kst.getUTCFullYear(), m = kst.getUTCMonth(), d = kst.getUTCDate()
-  const startUtc = new Date(Date.UTC(y, m, d, 0, 0, 0) - 9 * 3600 * 1000)
-
   const supabaseAdmin = getSupabaseAdmin()
   const { data, error } = await supabaseAdmin
     .from('quotes')
-    .select('method, items')
+    .select('method, items, status')
     .is('deleted_at', null)
-    .gte('created_at', startUtc.toISOString())
+    .in('status', ACTIVE_STATUSES)
 
   if (error) {
-    console.warn('[DAILY-COUNT] 조회 오류:', error.message)
+    console.warn('[ACTIVE-COUNT] 조회 오류:', error.message)
     return NextResponse.json({ counts: {} }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
