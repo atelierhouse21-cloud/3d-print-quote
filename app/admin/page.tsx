@@ -558,6 +558,7 @@ export default function AdminPage() {
   const [filter, setFilter]         = useState<'all'|'pending'|'approved'|'rejected'|'shipped'|'as'|'deleted'>('all')
   const [tab, setTab]               = useState<'quotes'|'settings'>('quotes')
   const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
+  const [dailyOrderLimit, setDailyOrderLimit] = useState<number>(4)
   const [savingSettings, setSavingSettings] = useState(false)
   const [showIssueForm, setShowIssueForm] = useState(false)
   const [issueDraft, setIssueDraft]     = useState('')
@@ -621,6 +622,12 @@ export default function AdminPage() {
       const raw  = await res.json()
       const normalized = normalizeSettings(raw)
       setEditSettings(normalized)
+      // 1일 접수 제한(전체 총량) 로드
+      try {
+        const r2 = await fetch('/api/settings?key=daily_order_limit')
+        const v2 = await r2.json()
+        setDailyOrderLimit(Number(v2?.limit) > 0 ? Number(v2.limit) : 4)
+      } catch { setDailyOrderLimit(4) }
     } catch(e) { console.error(e) }
   }
 
@@ -655,6 +662,12 @@ export default function AdminPage() {
       })
       const json = await res.json()
       if (!json.ok && json.error) throw new Error(json.error)
+      // 1일 접수 제한 저장
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ key: 'daily_order_limit', value: { limit: Number(dailyOrderLimit) > 0 ? Number(dailyOrderLimit) : 0 } })
+      })
       alert('설정이 저장되었습니다. 고객 견적 페이지에 즉시 반영됩니다.')
       loadSettings()
     } catch(e:any) { alert('오류: ' + e.message) }
@@ -733,10 +746,10 @@ export default function AdminPage() {
     as:       activeQuotes.filter(isAS).length,
     deleted:  deletedQuotes.length,
   }
-  // 검색(견적번호·이름·이메일·업체명·연락처) + 페이지네이션
+  // 검색(견적번호·이름·이메일·업체명·연락처·고객 확인번호) + 페이지네이션
   const kw = search.trim().toLowerCase()
   const searched = kw
-    ? filtered.filter(q => [q.quote_no, q.name, q.email, q.company, q.phone]
+    ? filtered.filter(q => [q.quote_no, q.name, q.email, q.company, q.phone, (q as any).tracking_code]
         .some(v => (v || '').toLowerCase().includes(kw)))
     : filtered
   const pageItems = searched.slice(0, visibleCount)
@@ -854,6 +867,12 @@ export default function AdminPage() {
       {sel.status !== 'rejected' && <Milestone quote={sel} />}
 
       <Section title="견적 정보" style={{ marginBottom:12 }}>
+        {(sel as any).tracking_code && (
+          <div style={{ marginBottom:12, padding:'10px 14px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
+            <span style={{ fontSize:12, color:'#1e40af', fontWeight:600 }}>고객 확인번호</span>
+            <span style={{ fontSize:15, fontWeight:800, color:'#1e40af', letterSpacing:'0.5px', fontFamily:'monospace' }}>{(sel as any).tracking_code}</span>
+          </div>
+        )}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <Info label="견적 번호" value={sel.quote_no} />
           <div style={{ marginBottom:12 }}>
@@ -1199,7 +1218,7 @@ export default function AdminPage() {
                 <option value="deleted">삭제 ({counts.deleted})</option>
               </select>
               <input value={search} onChange={e=>{ setSearch(e.target.value); setVisibleCount(30) }}
-                placeholder="견적번호·이름·이메일·업체·연락처 검색"
+                placeholder="견적번호·이름·이메일·업체·연락처·확인번호 검색"
                 style={{ padding:'9px 12px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:13, minWidth:220 }} />
             </div>
             {filter !== 'deleted' && (
@@ -1318,6 +1337,21 @@ export default function AdminPage() {
 
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:13, color:'#1e40af' }}>
                 ℹ저장 즉시 고객 견적 페이지에 반영됩니다. 비활성화된 방식은 고객에게 표시되지 않습니다.
+              </div>
+
+              {/* 1일 접수 제한 (전체 총량) — 혼잡 안내 기준과 별개로 접수 자체를 차단 */}
+              <div style={{ background:'#fff', border:'1px solid #fecaca', borderRadius:12, padding:18, marginBottom:12 }}>
+                <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>1일 접수 제한 (전체)</div>
+                <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
+                  하루 전체 견적 접수 건수가 이 수에 도달하면 고객이 제출할 수 없고 &quot;오늘 접수 마감&quot; 안내가 표시됩니다(방식 무관 총합 기준). 0으로 두면 제한하지 않습니다.
+                </p>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:13, color:'#374151' }}>하루 최대</span>
+                  <input type="number" step="1" min={0} value={dailyOrderLimit}
+                    onChange={e => setDailyOrderLimit(parseInt(e.target.value) || 0)}
+                    style={{ width:80, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' }} />
+                  <span style={{ fontSize:13, color:'#374151' }}>건</span>
+                </div>
               </div>
 
               {(['FDM','SLA','SLS','MJF'] as const).map(method => (
