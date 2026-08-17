@@ -742,6 +742,12 @@ export default function Home() {
         method: 'POST', headers: { 'Content-Type':'application/json' },
         body: JSON.stringify(payload),
       })
+      if (res.status === 429) {
+        const j = await res.json().catch(()=>({}))
+        alert(j.error || '금일 견적 접수가 마감되었습니다. 내일 다시 시도해 주세요.')
+        setLoading(false)
+        return
+      }
       const json = await res.json()
       if (!json.ok) throw new Error(json.error)
 
