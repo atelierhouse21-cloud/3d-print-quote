@@ -108,6 +108,28 @@ export async function POST(req: NextRequest) {
       printOptions = normalizeSettings(setRow?.value || {})
     } catch { printOptions = {} }
 
+    // 1일 접수 제한(전체 총량) 확인 — 오늘(한국시간) 접수 건수가 제한 이상이면 차단
+    try {
+      const { data: limitRow } = await supabaseAdmin.from('settings').select('value').eq('key', 'daily_order_limit').single()
+      const dailyLimit = Number((limitRow?.value as any)?.limit) || 0
+      if (dailyLimit > 0) {
+        const now = new Date()
+        const kst = new Date(now.getTime() + 9 * 3600 * 1000)
+        const startUtc = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), 0, 0, 0) - 9 * 3600 * 1000)
+        const { count } = await supabaseAdmin
+          .from('quotes')
+          .select('id', { count: 'exact', head: true })
+          .is('deleted_at', null)
+          .gte('created_at', startUtc.toISOString())
+        if ((count || 0) >= dailyLimit) {
+          return NextResponse.json(
+            { error: '금일 견적 접수가 마감되었습니다. 내일 다시 시도해 주세요.' },
+            { status: 429 }
+          )
+        }
+      }
+    } catch { /* 제한 확인 실패 시 접수는 진행 */ }
+
     // 견적번호 생성 + 저장 (동시 접수로 번호가 겹치면 새 번호로 재시도)
     let data: any = null
     let quote_no = ''
