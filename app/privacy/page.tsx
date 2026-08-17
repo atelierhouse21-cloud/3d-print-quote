@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <div style={wrap}>
       <h1 style={h1}>개인정보처리방침</h1>
       <p style={{ color: '#6b7280', marginBottom: 4 }}>아틀리에 하우스 3D 프린팅 견적 시스템(이하 &quot;서비스&quot;)</p>
-      <p style={{ color: '#9ca3af', fontSize: 12 }}>본 방침은 표준 양식을 바탕으로 작성된 예시이며, 실제 운영 정보(상호·연락처·대표자 등)에 맞게 보완하시기 바랍니다.</p>
+      {/*<p style={{ color: '#9ca3af', fontSize: 12 }}>본 방침은 표준 양식을 바탕으로 작성된 예시이며, 실제 운영 정보(상호·연락처·대표자 등)에 맞게 보완하시기 바랍니다.*/}</p>
 
       <h2 style={h2}>1. 수집하는 개인정보 항목</h2>
       <p style={p}>서비스는 견적 요청 처리를 위해 다음 정보를 수집합니다.</p>
@@ -53,9 +53,9 @@ export default function PrivacyPage() {
       <p style={p}>필수 항목 수집·이용에 대한 동의를 거부할 수 있으나, 이 경우 견적 서비스 이용이 제한될 수 있습니다. 마케팅 활용 동의(선택)는 거부하셔도 견적 서비스 이용에 제한이 없습니다.</p>
 
       <h2 style={h2}>8. 문의처</h2>
-      <p style={p}>개인정보 관련 문의 및 권리 행사: 운영자 이메일(서비스 운영 정보에 맞게 기입)</p>
+      <p style={p}>개인정보 관련 문의 및 권리 행사: atelier_house@naver.com  </p>
 
-      <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 28 }}>본 방침의 시행일 및 변경 이력은 운영 상황에 맞게 관리하시기 바랍니다.</p>
+        {/*<p style={{ color: '#9ca3af', fontSize: 12, marginTop: 28 }}>본 방침의 시행일 및 변경 이력은 운영 상황에 맞게 관리하시기 바랍니다.*/}</p>
     </div>
   )
 }
