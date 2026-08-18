@@ -401,12 +401,11 @@ function Fixed({ text }: { text: string }) {
 }
 
 // ── 파일 아이템 카드 ──────────────────────────────────
-function FileItemCard({ item, idx, options, onChange, onRemove, isMobile, closedMethods }: {
+function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   item: FileItem; idx: number; options: PrintOptions
   onChange: (id:string, key:keyof FileItem, val:any)=>void
   onRemove: (id:string)=>void
   isMobile: boolean
-  closedMethods: string[]
 }) {
   const enabledMethods = getEnabledMethods(options)
   const materials      = getMaterials(options, item.method)
@@ -480,23 +479,16 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile, closed
           <div style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:'#374151',textTransform:'uppercase' as const,letterSpacing:'.4px',marginBottom:6}}>출력 방식</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}>
-              {enabledMethods.map(([k, m])=>{
-                const isClosed = closedMethods.includes(k)
-                return (
-                <button key={k} disabled={isClosed} onClick={()=>{ if(!isClosed) updMethod(k) }} style={{
+              {enabledMethods.map(([k, m])=>(
+                <button key={k} onClick={()=>updMethod(k)} style={{
                   border:item.method===k?'2px solid #2563eb':'1px solid #e5e7eb',
-                  borderRadius:7,padding:'6px 8px',cursor:isClosed?'not-allowed':'pointer',textAlign:'left',
-                  background:isClosed?'#f3f4f6':(item.method===k?'#eff6ff':'#fafafa'),opacity:isClosed?0.6:1,transition:'all .12s'}}>
-                  <div style={{fontSize:12,fontWeight:700,color:isClosed?'#9ca3af':(item.method===k?'#2563eb':'#1a1a1a')}}>{m.label}{isClosed?' (접수 마감)':''}</div>
+                  borderRadius:7,padding:'6px 8px',cursor:'pointer',textAlign:'left',
+                  background:item.method===k?'#eff6ff':'#fafafa',transition:'all .12s'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:item.method===k?'#2563eb':'#1a1a1a'}}>{m.label}</div>
                   <div style={{fontSize:10,color:item.method===k?'#3b82f6':'#9ca3af',marginTop:1}}>{m.sub}</div>
                 </button>
-              )})}
+              ))}
             </div>
-            {closedMethods.includes(item.method) && (
-              <div style={{marginTop:8,padding:'8px 12px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,fontSize:12,color:'#b91c1c',fontWeight:600}}>
-                현재 이 방식은 작업량이 많아 접수가 마감되었습니다. 다른 방식을 선택해 주세요.
-              </div>
-            )}
           </div>
 
           {/* 소재 / 색상 / 품질 / 수량 — 옵션이 1개면 고정 표시 */}
@@ -698,7 +690,6 @@ export default function Home() {
     const cap = options[m]?.capacityLimit || 0
     return cap > 0 && (dailyCounts[m] || 0) >= cap
   }
-  const closedMethodCodes = Object.keys(options).filter(methodClosed)
   const closedInCart = Array.from(new Set(items.map(it=>it.method))).filter(methodClosed).map(m=>METHODS[m]?.label||m)
 
   const submit = async () => {
@@ -962,11 +953,6 @@ export default function Home() {
           {/* ── STEP 1: 파일 업로드 & 출력 설정 ── */}
           {step===1&&<>
             <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>출력할 파일을 업로드하고 각 파일의 출력 설정을 선택해 주세요.</p>
-            {closedMethodCodes.length>0 && (
-              <div style={{marginBottom:14,padding:'10px 14px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:10,fontSize:13,color:'#b91c1c'}}>
-                현재 <b>{closedMethodCodes.map(m=>METHODS[m]?.label||m).join(', ')}</b> 방식은 작업량이 많아 접수가 마감되었습니다. 다른 방식을 선택해 주세요.
-              </div>
-            )}
             <input ref={fileRef} type="file" accept={isMobile?undefined:'.stl'} style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
             <div
               onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
@@ -990,15 +976,13 @@ export default function Home() {
               </div>
             )}
             {items.map((item,idx)=>(
-              <FileItemCard key={item.id} item={item} idx={idx} options={options} onChange={updateItem} onRemove={removeItem} isMobile={isMobile} closedMethods={closedMethodCodes}/>
+              <FileItemCard key={item.id} item={item} idx={idx} options={options} onChange={updateItem} onRemove={removeItem} isMobile={isMobile}/>
             ))}
             {items.length>0&&(
               <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
                 <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>{
                   const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
                   if(pending){alert(`"${pending.file.name}" 파일은 자동 견적이 어려워 담당자 확인이 필요합니다.\n파일 카드의 "담당자 견적 요청" 버튼을 누른 뒤 진행해 주세요.`);return}
-                  const closedItem = items.find(it => methodClosed(it.method))
-                  if(closedItem){alert(`현재 ${METHODS[closedItem.method]?.label || closedItem.method} 방식은 작업량이 많아 접수가 마감되었습니다.\n다른 방식을 선택하시거나 잠시 후 다시 시도해 주세요.`);return}
                   setStep(2)
                 }}>견적 확인 →</button>
               </div>
@@ -1008,6 +992,11 @@ export default function Home() {
           {/* ── STEP 2: 견적 확인 ── */}
           {step===2&&<>
             <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>견적 내용을 확인하고 다음 단계로 진행해 주세요.</p>
+            {closedInCart.length>0 && (
+              <div style={{padding:'12px 14px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:10,fontSize:13,color:'#b91c1c',marginBottom:14,lineHeight:1.6}}>
+                현재 <b>{closedInCart.join(', ')}</b> 방식은 작업량이 많아 접수가 마감되었습니다. 이전 단계에서 다른 방식을 선택해 주시거나, 잠시 후 다시 시도해 주세요.
+              </div>
+            )}
             {congestedMethods.length>0 && (
               <div style={{display:'flex',gap:10,padding:'12px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:14,alignItems:'flex-start'}}>
                 <span></span><span>현재 작업 대기가 많아 작업 소요에 시간이 더 소요될 수 있습니다{congestedMethods.length>0?` (${congestedMethods.join(', ')})`:''}. 접수는 정상적으로 진행됩니다.</span>
@@ -1064,7 +1053,13 @@ export default function Home() {
 
             <div style={{display:'flex',justifyContent:'space-between'}}>
               <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
-              <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>setStep(3)}>다음 단계 →</button>
+              <button style={{...S.btn,background:closedInCart.length>0?'#9ca3af':'#2563eb',color:'#fff',cursor:closedInCart.length>0?'not-allowed':'pointer'}}
+                disabled={closedInCart.length>0}
+                onClick={()=>{
+                  const closedItem = items.find(it => methodClosed(it.method))
+                  if(closedItem){alert(`현재 ${METHODS[closedItem.method]?.label || closedItem.method} 방식은 작업량이 많아 접수가 마감되었습니다.\n이전 단계에서 다른 방식을 선택해 주세요.`);return}
+                  setStep(3)
+                }}>다음 단계 →</button>
             </div>
           </>}
 
