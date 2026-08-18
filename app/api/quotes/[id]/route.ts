@@ -7,7 +7,7 @@ import { Resend } from 'resend'
 const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string))
 import { krw, priceBreakdown } from '@/lib/constants'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY || 're_missing_key')
 
 // 이메일 템플릿 함수들
 function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: string, shippingCompany?: string, issueNote?: string) {
