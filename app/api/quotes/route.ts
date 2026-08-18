@@ -5,7 +5,7 @@ import { calcPrice, calcDays, normalizeSettings, calcPriceFDM, calcPriceV2, ACTI
 import { Resend } from 'resend'
 import crypto from 'crypto'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY || 're_missing_key')
 
 // 서버에서 파일별 계산 근거를 생성(고객 페이지 버전/캐시와 무관하게 항상 저장)
 function buildCalc(fl: any, options: any): any {
