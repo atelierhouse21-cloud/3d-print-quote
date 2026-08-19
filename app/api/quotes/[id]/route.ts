@@ -5,7 +5,7 @@ import { Resend } from 'resend'
 
 // 이메일 HTML 사용자 입력값 이스케이프(주입 방지)
 const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string))
-import { krw, priceBreakdown, shippingForWeight, normalizeShippingTiers, SHIPPING_FEE } from '@/lib/constants'
+import { krw, priceBreakdown, shippingForWeight, normalizeShippingTiers, freeShipThreshold, SHIPPING_FEE } from '@/lib/constants'
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_missing_key')
 
@@ -264,12 +264,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       try {
         const { data: shipRow } = await supabaseAdmin.from('settings').select('value').eq('key', 'shipping_tiers').single()
         const tiers = normalizeShippingTiers(shipRow?.value)
+        const freeAt = freeShipThreshold(shipRow?.value)
         let totalG = 0
         if (Array.isArray((quote as any).items)) for (const it of (quote as any).items) {
           const m = Number(it?.calc?.mass)
           if (isFinite(m) && m > 0) totalG += m
         }
         if (totalG > 0) shipFee = shippingForWeight(totalG / 1000, tiers)
+        // 무료배송 기준: 확정 공급가가 기준 이상이면 배송비 0
+        if (freeAt > 0 && Number(finalPrice) >= freeAt) shipFee = 0
       } catch { /* 계산 실패 시 기본 배송비 유지 */ }
       const bd = priceBreakdown(finalPrice, shipFee)
 

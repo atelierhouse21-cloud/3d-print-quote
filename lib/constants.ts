@@ -267,6 +267,13 @@ export function normalizeShippingTiers(raw: any): ShippingTier[] {
   return arr.map((t: any) => ({ maxKg: Number(t.maxKg) || 0, fee: Math.round(Number(t.fee) || 0) }))
 }
 
+// 무료배송 기준(공급가 VAT·배송비 제외 기준). 이 금액 이상이면 배송비 0.
+export const DEFAULT_FREE_SHIP_THRESHOLD = 50000
+export function freeShipThreshold(raw: any): number {
+  const v = Number(raw?.freeThreshold)
+  return (isFinite(v) && v >= 0) ? Math.round(v) : DEFAULT_FREE_SHIP_THRESHOLD
+}
+
 // 공급가(VAT 별도)로부터 부가세·배송비·합계 계산.
 // shipping을 넘기면 그 값을 배송비로 사용(무게 구간 결과). 생략하면 기존 고정 배송비.
 export function priceBreakdown(supply: number | null | undefined, shipping?: number) {

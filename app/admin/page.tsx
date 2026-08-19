@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown, normalizeShippingTiers, DEFAULT_SHIPPING_TIERS} from '@/lib/constants'
+import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown, normalizeShippingTiers, DEFAULT_SHIPPING_TIERS, freeShipThreshold} from '@/lib/constants'
 import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
 
 // 관리자 전용: 접수된 파일의 견적 계산 근거(중간값) 표시 토글
@@ -570,6 +570,7 @@ export default function AdminPage() {
   const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [shipTiers, setShipTiers] = useState<ShippingTier[]>([...DEFAULT_SHIPPING_TIERS])
+  const [freeThreshold, setFreeThreshold] = useState<number>(50000)
   const [savingSettings, setSavingSettings] = useState(false)
   const [showIssueForm, setShowIssueForm] = useState(false)
   const [issueDraft, setIssueDraft]     = useState('')
@@ -637,6 +638,7 @@ export default function AdminPage() {
         const r2 = await fetch('/api/settings?key=shipping_tiers')
         const v2 = await r2.json()
         setShipTiers(normalizeShippingTiers(v2))
+        setFreeThreshold(freeShipThreshold(v2))
       } catch { setShipTiers([...DEFAULT_SHIPPING_TIERS]) }
       setSettingsDirty(false)
     } catch(e) { console.error(e) }
@@ -677,7 +679,7 @@ export default function AdminPage() {
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type':'application/json', 'x-admin-password': password },
-        body: JSON.stringify({ key: 'shipping_tiers', value: { tiers: shipTiers } })
+        body: JSON.stringify({ key: 'shipping_tiers', value: { tiers: shipTiers, freeThreshold: Number(freeThreshold) || 0 } })
       })
       setSettingsDirty(false)
       alert('설정이 저장되었습니다. 고객 견적 페이지에 즉시 반영됩니다.')
@@ -1388,6 +1390,19 @@ export default function AdminPage() {
                   style={{ marginTop:10, padding:'7px 14px', background:'#f3f4f6', border:'1px solid #d1d5db', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
                   + 구간 추가
                 </button>
+                <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid #e5e7eb' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:'#1e40af' }}>무료배송 기준</span>
+                    <span style={{ fontSize:12, color:'#374151' }}>공급가</span>
+                    <input type="number" step="1000" min={0} value={freeThreshold}
+                      onChange={e => { setFreeThreshold(parseInt(e.target.value) || 0); setSettingsDirty(true) }}
+                      style={{ width:120, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                    <span style={{ fontSize:12, color:'#374151' }}>원 이상이면 배송비 무료</span>
+                  </div>
+                  <p style={{ fontSize:11, color:'#6b7280', margin:'8px 0 0' }}>
+                    배송비를 제외한 공급가(VAT 별도)가 이 금액 이상이면 배송비가 0원이 됩니다. 0으로 두면 무료배송을 적용하지 않습니다.
+                  </p>
+                </div>
               </div>
 
               {(['FDM','SLA','SLS','MJF'] as const).map(method => (

@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
   import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE, shippingForWeight, normalizeShippingTiers } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE, shippingForWeight, normalizeShippingTiers, freeShipThreshold } from '@/lib/constants'
 import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
@@ -628,6 +628,7 @@ export default function Home() {
   const [showRefundBox, setShowRefundBox] = useState(false)
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({})
   const [shipTiers, setShipTiers] = useState<ShippingTier[]>([])
+  const [freeThreshold, setFreeThreshold] = useState<number>(50000)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── 설정 로드 (페이지 시작 시) ──
@@ -640,8 +641,8 @@ export default function Home() {
     // 무게 구간별 배송비 표
     fetch(`/api/settings?key=shipping_tiers&t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
-      .then(raw => setShipTiers(normalizeShippingTiers(raw)))
-      .catch(() => setShipTiers(normalizeShippingTiers(null)))
+      .then(raw => { setShipTiers(normalizeShippingTiers(raw)); setFreeThreshold(freeShipThreshold(raw)) })
+      .catch(() => { setShipTiers(normalizeShippingTiers(null)); setFreeThreshold(50000) })
     // 현재 진행 중(배송준비 미만) 방식별 작업 수(혼잡·마감 안내용)
     fetch(`/api/daily-count?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
@@ -704,7 +705,8 @@ export default function Home() {
   const hasManualItem = items.some(it => itemNeedsManual(it, options) || !it.vol)
   const totalWeightKg = items.reduce((s,it)=> s + (itemNeedsManual(it, options) ? 0 : itemMassG(it, options)), 0) / 1000
   const shipUnknown = items.length > 0 && hasManualItem
-  const shipFee = shipUnknown ? null : shippingForWeight(totalWeightKg, shipTiers)
+  const freeShip = !shipUnknown && freeThreshold > 0 && totalPrice >= freeThreshold
+  const shipFee = shipUnknown ? null : (freeShip ? 0 : shippingForWeight(totalWeightKg, shipTiers))
   // 진행 중 작업 수가 혼잡 기준 이상인 방식(혼잡 안내). 견적서에 포함된 방식만 대상.
   const congestedMethods = Array.from(new Set(items.map(it=>it.method)))
     .filter(mth => {
@@ -1066,13 +1068,16 @@ export default function Home() {
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:8,paddingBottom:8,borderBottom:'1px solid #bfdbfe'}}>
                   <span>배송비 {!shipUnknown && totalWeightKg>0 ? `(약 ${totalWeightKg.toFixed(1)}kg)` : ''}</span>
-                  <span>{shipUnknown ? '담당자 확정' : krw(b.shipping)}</span>
+                  <span>{shipUnknown ? '담당자 확정' : (freeShip ? '무료' : krw(b.shipping))}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <span style={{fontWeight:700,fontSize:14}}>합계 (VAT·배송비 포함)</span>
                   <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{shipUnknown ? '담당자 확정' : krw(b.total)}</span>
                 </div>
-                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : '무게 구간에 따라 배송비가 산정됩니다'}</div>
+                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : (freeShip ? '공급가 기준 충족으로 배송비가 무료입니다' : '무게 구간에 따라 배송비가 산정됩니다')}</div>
+                {freeThreshold > 0 && !freeShip && (
+                  <div style={{marginTop:4,fontSize:11,color:'#2563eb',textAlign:'right',fontWeight:600}}>공급가 {krw(freeThreshold)} 이상 시 배송비 무료</div>
+                )}
               </div>
             )})()}
 
