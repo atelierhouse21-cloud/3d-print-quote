@@ -3,8 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown} from '@/lib/constants'
-import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
+import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown, normalizeShippingTiers, DEFAULT_SHIPPING_TIERS} from '@/lib/constants'
+import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
 
 // 관리자 전용: 접수된 파일의 견적 계산 근거(중간값) 표시 토글
 function CalcDetail({ fl }: { fl: any }) {
@@ -569,6 +569,7 @@ export default function AdminPage() {
   const [tab, setTab]               = useState<'quotes'|'settings'>('quotes')
   const [editSettings, setEditSettings] = useState<PrintOptions | null>(null)
   const [settingsDirty, setSettingsDirty] = useState(false)
+  const [shipTiers, setShipTiers] = useState<ShippingTier[]>([...DEFAULT_SHIPPING_TIERS])
   const [savingSettings, setSavingSettings] = useState(false)
   const [showIssueForm, setShowIssueForm] = useState(false)
   const [issueDraft, setIssueDraft]     = useState('')
@@ -632,6 +633,11 @@ export default function AdminPage() {
       const raw  = await res.json()
       const normalized = normalizeSettings(raw)
       setEditSettings(normalized)
+      try {
+        const r2 = await fetch('/api/settings?key=shipping_tiers')
+        const v2 = await r2.json()
+        setShipTiers(normalizeShippingTiers(v2))
+      } catch { setShipTiers([...DEFAULT_SHIPPING_TIERS]) }
       setSettingsDirty(false)
     } catch(e) { console.error(e) }
   }
@@ -667,6 +673,12 @@ export default function AdminPage() {
       })
       const json = await res.json()
       if (!json.ok && json.error) throw new Error(json.error)
+      // 배송비 구간 저장
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ key: 'shipping_tiers', value: { tiers: shipTiers } })
+      })
       setSettingsDirty(false)
       alert('설정이 저장되었습니다. 고객 견적 페이지에 즉시 반영됩니다.')
       loadSettings()
@@ -1346,6 +1358,36 @@ export default function AdminPage() {
 
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:13, color:'#1e40af' }}>
                 ℹ저장 즉시 고객 견적 페이지에 반영됩니다. 비활성화된 방식은 고객에게 표시되지 않습니다.
+              </div>
+
+              {/* 무게 구간별 배송비 */}
+              <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:18, marginBottom:12 }}>
+                <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>배송비 (무게 구간별)</div>
+                <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
+                  견적 시 산출된 출력물 무게(여러 파일이면 합산)로 아래 구간의 배송비가 자동 적용됩니다. 담당자 견적 등 무게를 알 수 없는 건은 &quot;담당자 확정&quot;으로 비워집니다. 상한이 <b>0</b>인 구간은 그 위 무게 전체(초과)에 적용됩니다.
+                </p>
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {shipTiers.map((t, i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      <span style={{ fontSize:12, color:'#6b7280', width:44 }}>{i===0?'~':'초과~'}</span>
+                      <input type="number" step="0.1" min={0} value={t.maxKg}
+                        onChange={e => { const v=parseFloat(e.target.value)||0; setShipTiers(prev=>prev.map((x,idx)=>idx===i?{...x,maxKg:v}:x)); setSettingsDirty(true) }}
+                        style={{ width:80, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                      <span style={{ fontSize:12, color:'#374151' }}>kg 이하</span>
+                      <span style={{ fontSize:12, color:'#9ca3af' }}>→</span>
+                      <input type="number" step="100" min={0} value={t.fee}
+                        onChange={e => { const v=parseInt(e.target.value)||0; setShipTiers(prev=>prev.map((x,idx)=>idx===i?{...x,fee:v}:x)); setSettingsDirty(true) }}
+                        style={{ width:100, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                      <span style={{ fontSize:12, color:'#374151' }}>원</span>
+                      <button onClick={() => { setShipTiers(prev=>prev.filter((_,idx)=>idx!==i)); setSettingsDirty(true) }}
+                        title="구간 삭제" style={{ marginLeft:'auto', width:26, height:26, borderRadius:6, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', fontSize:14 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => { setShipTiers(prev=>[...prev, { maxKg:0, fee:0 }]); setSettingsDirty(true) }}
+                  style={{ marginTop:10, padding:'7px 14px', background:'#f3f4f6', border:'1px solid #d1d5db', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                  + 구간 추가
+                </button>
               </div>
 
               {(['FDM','SLA','SLS','MJF'] as const).map(method => (

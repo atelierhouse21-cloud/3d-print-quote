@@ -3,8 +3,8 @@ import { useState, useRef, useEffect } from 'react'
   import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE } from '@/lib/constants'
-import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE, shippingForWeight, normalizeShippingTiers } from '@/lib/constants'
+import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
 // 화면 폭이 좁아지면 가로 배치를 세로(1열)로 자동 전환한다.
@@ -321,6 +321,23 @@ function linePrice(it: FileItem, options: PrintOptions): number {
   return Math.max(p, it.minPrice || 0)
 }
 
+// 파일별 추정 무게(g) — 배송비 산정용. 담당자 견적/무게 미상은 0.
+function itemMassG(it: FileItem, options: PrintOptions): number {
+  if (!it.vol) return 0
+  const qty = it.qty || 1
+  if (it.method === 'FDM') {
+    const cfg = options['FDM']
+    const tEff = cfg?.shellThickness ?? 1.1
+    const kLoss = cfg?.lossFactor ?? 1.04
+    const alpha = Math.min(Math.max(it.infill || 0, 0), 100) / 100
+    let vShell = (it.surfaceArea || 0) * (Math.max(tEff, 0) / 10)
+    if (vShell > it.vol) vShell = it.vol
+    const vInfill = Math.max(it.vol - vShell, 0)
+    return it.density * (vShell + vInfill * alpha) * qty * kLoss
+  }
+  return it.vol * it.density * qty
+}
+
 // 관리자 확인용 계산 근거(중간값 포함). 제출 시 저장되어 관리자 상세에서 표시됨.
 function calcDetail(it: FileItem, options: PrintOptions): any {
   const r2 = (n: number) => Math.round(n * 100) / 100
@@ -610,6 +627,7 @@ export default function Home() {
   const [agreeRefund, setAgreeRefund] = useState(false)
   const [showRefundBox, setShowRefundBox] = useState(false)
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({})
+  const [shipTiers, setShipTiers] = useState<ShippingTier[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── 설정 로드 (페이지 시작 시) ──
@@ -619,6 +637,11 @@ export default function Home() {
       .then(raw => setOptions(normalizeSettings(raw)))
       .catch(() => setOptions(defaultSettings()))
       .finally(() => setOptLoaded(true))
+    // 무게 구간별 배송비 표
+    fetch(`/api/settings?key=shipping_tiers&t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(raw => setShipTiers(normalizeShippingTiers(raw)))
+      .catch(() => setShipTiers(normalizeShippingTiers(null)))
     // 현재 진행 중(배송준비 미만) 방식별 작업 수(혼잡·마감 안내용)
     fetch(`/api/daily-count?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
@@ -677,6 +700,11 @@ export default function Home() {
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
   const totalPrice = items.reduce((sum,it)=> sum + (itemNeedsManual(it, options) ? 0 : linePrice(it, options)), 0)
+  // 배송비: 자동 산출 파일들의 추정 무게 합으로 구간 적용. 담당자 견적 등 무게 미상이 있으면 배송비는 담당자 확정.
+  const hasManualItem = items.some(it => itemNeedsManual(it, options) || !it.vol)
+  const totalWeightKg = items.reduce((s,it)=> s + (itemNeedsManual(it, options) ? 0 : itemMassG(it, options)), 0) / 1000
+  const shipUnknown = items.length > 0 && hasManualItem
+  const shipFee = shipUnknown ? null : shippingForWeight(totalWeightKg, shipTiers)
   // 진행 중 작업 수가 혼잡 기준 이상인 방식(혼잡 안내). 견적서에 포함된 방식만 대상.
   const congestedMethods = Array.from(new Set(items.map(it=>it.method)))
     .filter(mth => {
@@ -1028,7 +1056,7 @@ export default function Home() {
               </div>
             ))}
 
-            {(() => { const b = priceBreakdown(totalPrice); return (
+            {(() => { const b = priceBreakdown(totalPrice, shipUnknown ? 0 : (shipFee ?? 0)); return (
               <div style={{background:'#eff6ff',borderRadius:10,padding:'14px 16px',marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:6}}>
                   <span>공급가 {items.length>1?'(전체 합계)':''}</span><span>{krw(b.supply)}</span>
@@ -1037,13 +1065,14 @@ export default function Home() {
                   <span>부가세 (10%)</span><span>{krw(b.vat)}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:8,paddingBottom:8,borderBottom:'1px solid #bfdbfe'}}>
-                  <span>배송비</span><span>{krw(b.shipping)}</span>
+                  <span>배송비 {!shipUnknown && totalWeightKg>0 ? `(약 ${totalWeightKg.toFixed(1)}kg)` : ''}</span>
+                  <span>{shipUnknown ? '담당자 확정' : krw(b.shipping)}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <span style={{fontWeight:700,fontSize:14}}>합계 (VAT·배송비 포함)</span>
-                  <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{krw(b.total)}</span>
+                  <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{shipUnknown ? '담당자 확정' : krw(b.total)}</span>
                 </div>
-                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>배송비 {krw(SHIPPING_FEE)} 포함</div>
+                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : '무게 구간에 따라 배송비가 산정됩니다'}</div>
               </div>
             )})()}
 

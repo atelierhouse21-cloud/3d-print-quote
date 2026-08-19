@@ -240,12 +240,40 @@ export const RETENTION_MS = RETENTION_MONTHS * 30 * 24 * 60 * 60 * 1000
 export const VAT_RATE = 0.1
 export const SHIPPING_FEE = 4500
 
-// 공급가(VAT 별도)로부터 부가세·배송비·합계 계산
-export function priceBreakdown(supply: number | null | undefined) {
+// 무게 구간별 배송비 (maxKg=0 → 상한 없음, 초과 구간). 국내 택배 3사 평균 기준 기본값.
+export type ShippingTier = { maxKg: number; fee: number }
+export const DEFAULT_SHIPPING_TIERS: ShippingTier[] = [
+  { maxKg: 2,  fee: 5000 },
+  { maxKg: 5,  fee: 5800 },
+  { maxKg: 10, fee: 7200 },
+  { maxKg: 20, fee: 8800 },
+  { maxKg: 0,  fee: 11700 },
+]
+
+// 무게(kg)에 해당하는 배송비 구간 금액
+export function shippingForWeight(weightKg: number, tiers?: ShippingTier[]): number {
+  const list = (tiers && tiers.length) ? tiers : DEFAULT_SHIPPING_TIERS
+  const w = Number(weightKg) || 0
+  const capped = list.filter(t => Number(t.maxKg) > 0).sort((a, b) => a.maxKg - b.maxKg)
+  for (const t of capped) if (w <= Number(t.maxKg)) return Math.round(Number(t.fee) || 0)
+  const over = list.find(t => Number(t.maxKg) === 0)
+  if (over) return Math.round(Number(over.fee) || 0)
+  return capped.length ? Math.round(Number(capped[capped.length - 1].fee) || 0) : 0
+}
+
+export function normalizeShippingTiers(raw: any): ShippingTier[] {
+  const arr = Array.isArray(raw?.tiers) ? raw.tiers : (Array.isArray(raw) ? raw : null)
+  if (!arr || !arr.length) return [...DEFAULT_SHIPPING_TIERS]
+  return arr.map((t: any) => ({ maxKg: Number(t.maxKg) || 0, fee: Math.round(Number(t.fee) || 0) }))
+}
+
+// 공급가(VAT 별도)로부터 부가세·배송비·합계 계산.
+// shipping을 넘기면 그 값을 배송비로 사용(무게 구간 결과). 생략하면 기존 고정 배송비.
+export function priceBreakdown(supply: number | null | undefined, shipping?: number) {
   const s = Math.round(Number(supply) || 0)
   const vat = Math.round(s * VAT_RATE)
-  const shipping = s > 0 ? SHIPPING_FEE : 0
-  return { supply: s, vat, shipping, total: s + vat + shipping }
+  const ship = shipping === undefined ? (s > 0 ? SHIPPING_FEE : 0) : Math.round(Number(shipping) || 0)
+  return { supply: s, vat, shipping: ship, total: s + vat + ship }
 }
 
 // 진행 중(배송준비 단계 미만)으로 간주하는 상태 — 혼잡/마감 판정의 기준
