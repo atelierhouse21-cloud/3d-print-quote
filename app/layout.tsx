@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div style={{ flex: 1 }}>{children}</div>
         <footer style={{ borderTop: '1px solid #e5e7eb', background: '#f4f5f7', padding: '16px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>
-            © 2026 ATELIER_HOUSE · Developed by ATELIER_HOUSE · v1.0.0. All rights reserved.
+            © 2026 ATELIER_HOUSE · Developed by ATELIER_HOUSE · v1.2.0. All rights reserved.
           </div>
         </footer>
       </body>
