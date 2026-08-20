@@ -1074,7 +1074,7 @@ export default function Home() {
                   <span style={{fontWeight:700,fontSize:14}}>합계 (VAT·배송비 포함)</span>
                   <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{shipUnknown ? '담당자 확정' : krw(b.total)}</span>
                 </div>
-                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : (freeShip ? '공급가 기준 충족으로 배송비가 무료입니다' : '무게 구간에 따라 배송비가 산정됩니다')}</div>
+                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : (freeShip ? `공급가 ${krw(freeThreshold)} 이상으로 배송비가 무료입니다` : '무게 구간에 따라 배송비가 산정됩니다')}</div>
                 {freeThreshold > 0 && !freeShip && (
                   <div style={{marginTop:4,fontSize:11,color:'#2563eb',textAlign:'right',fontWeight:600}}>공급가 {krw(freeThreshold)} 이상 시 배송비 무료</div>
                 )}
