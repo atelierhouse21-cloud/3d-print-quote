@@ -5,9 +5,9 @@ import { Resend } from 'resend'
 
 // 이메일 HTML 사용자 입력값 이스케이프(주입 방지)
 const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string))
-import { krw, priceBreakdown } from '@/lib/constants'
+import { krw, priceBreakdown, shippingForWeight, normalizeShippingTiers, freeShipThreshold, SHIPPING_FEE } from '@/lib/constants'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY || 're_missing_key')
 
 // 이메일 템플릿 함수들
 function getStatusEmailTemplate(status: string, quote: any, trackingNumber?: string, shippingCompany?: string, issueNote?: string) {
@@ -259,6 +259,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
       console.log('[API] Approved / Price:', finalPrice, '/ Days:', finalDays)
 
+      // 무게 구간 배송비 계산(견적서 items의 추정 무게 합). 무게 미상이면 기본 배송비로 대체.
+      let shipFee = SHIPPING_FEE
+      try {
+        const { data: shipRow } = await supabaseAdmin.from('settings').select('value').eq('key', 'shipping_tiers').single()
+        const tiers = normalizeShippingTiers(shipRow?.value)
+        const freeAt = freeShipThreshold(shipRow?.value)
+        let totalG = 0
+        if (Array.isArray((quote as any).items)) for (const it of (quote as any).items) {
+          const m = Number(it?.calc?.mass)
+          if (isFinite(m) && m > 0) totalG += m
+        }
+        if (totalG > 0) shipFee = shippingForWeight(totalG / 1000, tiers)
+        // 무료배송 기준: 확정 공급가가 기준 이상이면 배송비 0
+        if (freeAt > 0 && Number(finalPrice) >= freeAt) shipFee = 0
+      } catch { /* 계산 실패 시 기본 배송비 유지 */ }
+      const bd = priceBreakdown(finalPrice, shipFee)
+
       const emailResult = await resend.emails.send({
         from: process.env.FROM_EMAIL!,
         to: quote.email,
@@ -270,10 +287,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             <p style="margin-bottom:20px;">요청하신 견적이 확정되었습니다.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;">
               <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 0;color:#6b7280;width:120px;">견적 번호</td><td style="padding:10px 0;font-weight:700;">${quote.quote_no}</td></tr>
-              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">공급가</td><td style="padding:9px 0;text-align:right;">${krw(priceBreakdown(finalPrice).supply)}</td></tr>
-              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">부가세 (10%)</td><td style="padding:9px 0;text-align:right;">${krw(priceBreakdown(finalPrice).vat)}</td></tr>
-              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">배송비</td><td style="padding:9px 0;text-align:right;">${krw(priceBreakdown(finalPrice).shipping)}</td></tr>
-              <tr style="border-bottom:2px solid #e5e7eb;"><td style="padding:11px 0;color:#1a1a1a;font-weight:700;">합계 (VAT·배송비 포함)</td><td style="padding:11px 0;text-align:right;font-weight:800;font-size:18px;color:#15803d;">${krw(priceBreakdown(finalPrice).total)}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">공급가</td><td style="padding:9px 0;text-align:right;">${krw(bd.supply)}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">부가세 (10%)</td><td style="padding:9px 0;text-align:right;">${krw(bd.vat)}</td></tr>
+              <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:9px 0;color:#6b7280;">배송비</td><td style="padding:9px 0;text-align:right;">${krw(bd.shipping)}</td></tr>
+              <tr style="border-bottom:2px solid #e5e7eb;"><td style="padding:11px 0;color:#1a1a1a;font-weight:700;">합계 (VAT·배송비 포함)</td><td style="padding:11px 0;text-align:right;font-weight:800;font-size:18px;color:#15803d;">${krw(bd.total)}</td></tr>
               <tr><td style="padding:10px 0;color:#6b7280;">예상 납기</td><td style="padding:10px 0;text-align:right;font-weight:600;">${esc(finalDays)}</td></tr>
             </table>
             <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;font-size:14px;color:#0c4a6e;margin-bottom:12px;">

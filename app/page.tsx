@@ -1,10 +1,10 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import * as THREE from 'three'
+  import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE } from '@/lib/constants'
-import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE, shippingForWeight, normalizeShippingTiers, freeShipThreshold } from '@/lib/constants'
+import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
 // 화면 폭이 좁아지면 가로 배치를 세로(1열)로 자동 전환한다.
@@ -321,6 +321,23 @@ function linePrice(it: FileItem, options: PrintOptions): number {
   return Math.max(p, it.minPrice || 0)
 }
 
+// 파일별 추정 무게(g) — 배송비 산정용. 담당자 견적/무게 미상은 0.
+function itemMassG(it: FileItem, options: PrintOptions): number {
+  if (!it.vol) return 0
+  const qty = it.qty || 1
+  if (it.method === 'FDM') {
+    const cfg = options['FDM']
+    const tEff = cfg?.shellThickness ?? 1.1
+    const kLoss = cfg?.lossFactor ?? 1.04
+    const alpha = Math.min(Math.max(it.infill || 0, 0), 100) / 100
+    let vShell = (it.surfaceArea || 0) * (Math.max(tEff, 0) / 10)
+    if (vShell > it.vol) vShell = it.vol
+    const vInfill = Math.max(it.vol - vShell, 0)
+    return it.density * (vShell + vInfill * alpha) * qty * kLoss
+  }
+  return it.vol * it.density * qty
+}
+
 // 관리자 확인용 계산 근거(중간값 포함). 제출 시 저장되어 관리자 상세에서 표시됨.
 function calcDetail(it: FileItem, options: PrintOptions): any {
   const r2 = (n: number) => Math.round(n * 100) / 100
@@ -610,6 +627,8 @@ export default function Home() {
   const [agreeRefund, setAgreeRefund] = useState(false)
   const [showRefundBox, setShowRefundBox] = useState(false)
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({})
+  const [shipTiers, setShipTiers] = useState<ShippingTier[]>([])
+  const [freeThreshold, setFreeThreshold] = useState<number>(50000)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── 설정 로드 (페이지 시작 시) ──
@@ -619,16 +638,21 @@ export default function Home() {
       .then(raw => setOptions(normalizeSettings(raw)))
       .catch(() => setOptions(defaultSettings()))
       .finally(() => setOptLoaded(true))
-    // 오늘 방식별 접수 건수(혼잡 안내용)
+    // 무게 구간별 배송비 표
+    fetch(`/api/settings?key=shipping_tiers&t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(raw => { setShipTiers(normalizeShippingTiers(raw)); setFreeThreshold(freeShipThreshold(raw)) })
+      .catch(() => { setShipTiers(normalizeShippingTiers(null)); setFreeThreshold(50000) })
+    // 현재 진행 중(배송준비 미만) 방식별 작업 수(혼잡·마감 안내용)
     fetch(`/api/daily-count?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => setDailyCounts(d.counts || {}))
       .catch(() => setDailyCounts({}))
   }, [])
 
-  // 견적 확인 단계에 들어갈 때마다 오늘 접수 건수를 다시 조회(항상 최신 혼잡 안내)
+  // 파일 설정(1단계)·견적 확인(2단계)에 들어갈 때마다 최신 작업 수를 다시 조회
   useEffect(() => {
-    if (step !== 2) return
+    if (step !== 1 && step !== 2) return
     fetch(`/api/daily-count?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => setDailyCounts(d.counts || {}))
@@ -677,13 +701,26 @@ export default function Home() {
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
   const totalPrice = items.reduce((sum,it)=> sum + (itemNeedsManual(it, options) ? 0 : linePrice(it, options)), 0)
-  // 오늘 접수가 기준 이상인 방식(혼잡 안내). 견적서에 포함된 방식만 대상.
+  // 배송비: 자동 산출 파일들의 추정 무게 합으로 구간 적용. 담당자 견적 등 무게 미상이 있으면 배송비는 담당자 확정.
+  const hasManualItem = items.some(it => itemNeedsManual(it, options) || !it.vol)
+  const totalWeightKg = items.reduce((s,it)=> s + (itemNeedsManual(it, options) ? 0 : itemMassG(it, options)), 0) / 1000
+  const shipUnknown = items.length > 0 && hasManualItem
+  const freeShip = !shipUnknown && freeThreshold > 0 && totalPrice >= freeThreshold
+  const shipFee = shipUnknown ? null : (freeShip ? 0 : shippingForWeight(totalWeightKg, shipTiers))
+  // 진행 중 작업 수가 혼잡 기준 이상인 방식(혼잡 안내). 견적서에 포함된 방식만 대상.
   const congestedMethods = Array.from(new Set(items.map(it=>it.method)))
     .filter(mth => {
       const lim = options[mth]?.dailyLimit || 0
       return lim > 0 && (dailyCounts[mth] || 0) >= lim
     })
     .map(mth => METHODS[mth]?.label || mth)
+
+  // 진행 중 작업 수가 마감 기준 이상인 방식(접수 마감)
+  const methodClosed = (m: string) => {
+    const cap = options[m]?.capacityLimit || 0
+    return cap > 0 && (dailyCounts[m] || 0) >= cap
+  }
+  const closedInCart = Array.from(new Set(items.map(it=>it.method))).filter(methodClosed).map(m=>METHODS[m]?.label||m)
 
   const submit = async () => {
     if(!customer.name.trim()||!customer.email.trim()){alert('이름과 이메일은 필수입니다.');return}
@@ -695,6 +732,8 @@ export default function Home() {
     if (!agreeRefund) { alert('취소·교환·환불 정책 확인(필수)에 체크해 주세요.'); return }
     const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
     if (pending) { alert(`"${pending.file.name}" 파일은 담당자 견적이 필요합니다. 파일 카드의 "담당자 견적 요청" 버튼을 눌러 주세요.`); return }
+    const closedItem = items.find(it => methodClosed(it.method))
+    if (closedItem) { alert(`현재 ${METHODS[closedItem.method]?.label || closedItem.method} 방식은 작업량이 많아 접수가 마감되었습니다. 다른 방식을 선택하시거나 잠시 후 다시 시도해 주세요.`); return }
     setLoading(true)
     try {
       const primary = items[0]
@@ -983,6 +1022,11 @@ export default function Home() {
           {/* ── STEP 2: 견적 확인 ── */}
           {step===2&&<>
             <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>견적 내용을 확인하고 다음 단계로 진행해 주세요.</p>
+            {closedInCart.length>0 && (
+              <div style={{padding:'12px 14px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:10,fontSize:13,color:'#b91c1c',marginBottom:14,lineHeight:1.6}}>
+                현재 <b>{closedInCart.join(', ')}</b> 방식은 작업량이 많아 접수가 마감되었습니다. 이전 단계에서 다른 방식을 선택해 주시거나, 잠시 후 다시 시도해 주세요.
+              </div>
+            )}
             {congestedMethods.length>0 && (
               <div style={{display:'flex',gap:10,padding:'12px 14px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,fontSize:13,color:'#92400e',marginBottom:14,alignItems:'flex-start'}}>
                 <span></span><span>현재 작업 대기가 많아 작업 소요에 시간이 더 소요될 수 있습니다{congestedMethods.length>0?` (${congestedMethods.join(', ')})`:''}. 접수는 정상적으로 진행됩니다.</span>
@@ -1014,7 +1058,7 @@ export default function Home() {
               </div>
             ))}
 
-            {(() => { const b = priceBreakdown(totalPrice); return (
+            {(() => { const b = priceBreakdown(totalPrice, shipUnknown ? 0 : (shipFee ?? 0)); return (
               <div style={{background:'#eff6ff',borderRadius:10,padding:'14px 16px',marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:6}}>
                   <span>공급가 {items.length>1?'(전체 합계)':''}</span><span>{krw(b.supply)}</span>
@@ -1023,13 +1067,17 @@ export default function Home() {
                   <span>부가세 (10%)</span><span>{krw(b.vat)}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:8,paddingBottom:8,borderBottom:'1px solid #bfdbfe'}}>
-                  <span>배송비</span><span>{krw(b.shipping)}</span>
+                  <span>배송비 {!shipUnknown && totalWeightKg>0 ? `(약 ${totalWeightKg.toFixed(1)}kg)` : ''}</span>
+                  <span>{shipUnknown ? '담당자 확정' : (freeShip ? '무료' : krw(b.shipping))}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <span style={{fontWeight:700,fontSize:14}}>합계 (VAT·배송비 포함)</span>
-                  <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{krw(b.total)}</span>
+                  <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{shipUnknown ? '담당자 확정' : krw(b.total)}</span>
                 </div>
-                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>배송비 {krw(SHIPPING_FEE)} 포함</div>
+                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : (freeShip ? `공급가 ${krw(freeThreshold)} 이상으로 배송비가 무료입니다` : '무게 구간에 따라 배송비가 산정됩니다')}</div>
+                {freeThreshold > 0 && !freeShip && (
+                  <div style={{marginTop:4,fontSize:11,color:'#2563eb',textAlign:'right',fontWeight:600}}>공급가 {krw(freeThreshold)} 이상 시 배송비 무료</div>
+                )}
               </div>
             )})()}
 
@@ -1039,7 +1087,13 @@ export default function Home() {
 
             <div style={{display:'flex',justifyContent:'space-between'}}>
               <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
-              <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>setStep(3)}>다음 단계 →</button>
+              <button style={{...S.btn,background:closedInCart.length>0?'#9ca3af':'#2563eb',color:'#fff',cursor:closedInCart.length>0?'not-allowed':'pointer'}}
+                disabled={closedInCart.length>0}
+                onClick={()=>{
+                  const closedItem = items.find(it => methodClosed(it.method))
+                  if(closedItem){alert(`현재 ${METHODS[closedItem.method]?.label || closedItem.method} 방식은 작업량이 많아 접수가 마감되었습니다.\n이전 단계에서 다른 방식을 선택해 주세요.`);return}
+                  setStep(3)
+                }}>다음 단계 →</button>
             </div>
           </>}
 

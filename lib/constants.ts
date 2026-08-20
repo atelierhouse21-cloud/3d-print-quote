@@ -92,7 +92,7 @@ export type Quote = {
 // ═══════════════════════════════════════════════════════════════
 export type MaterialCfg = { name: string; density: number; coefficient: number; minPrice: number; maxX: number; maxY: number; maxZ: number; colors: string[] }
 export type QualityCfg  = { name: string; factor: number; infill: number }  // infill: 채움율(%) — FDM은 새 수식의 α, 기타 방식은 재료비율(%)
-export type MethodCfg   = { enabled: boolean; dailyLimit: number; shellThickness: number; lossFactor: number; materials: MaterialCfg[]; qualities: QualityCfg[] }  // shellThickness: 실효 외피두께(mm), lossFactor: 손실보정계수 — FDM 전용
+export type MethodCfg   = { enabled: boolean; dailyLimit: number; capacityLimit: number; shellThickness: number; lossFactor: number; materials: MaterialCfg[]; qualities: QualityCfg[] }  // dailyLimit: 혼잡 안내 기준(진행 중 작업 수), capacityLimit: 접수 마감 기준(진행 중 작업 수), shellThickness/lossFactor: FDM 전용
 export type PrintOptions = Record<string, MethodCfg>
 
 // 소재별 기본 단가 계수 (관리자 설정 값) — 관리자가 조정 가능
@@ -119,7 +119,7 @@ export function defaultMethodCfg(method: string): MethodCfg {
     name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: coeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...(COLS[method] || [])],
   }))
   const qualities: QualityCfg[] = (QUAL[method] || []).map(q => ({ name: q.v, factor: q.m, infill: 100 }))
-  return { enabled: true, dailyLimit: 0, shellThickness: 1.1, lossFactor: 1.04, materials, qualities }
+  return { enabled: true, dailyLimit: 0, capacityLimit: 0, shellThickness: 1.1, lossFactor: 1.04, materials, qualities }
 }
 
 // 전체 기본 설정
@@ -163,6 +163,7 @@ export function normalizeSettings(data: any): PrintOptions {
       r[m] = {
         enabled: cur.enabled !== false,
         dailyLimit: Number(cur.dailyLimit) || 0,
+        capacityLimit: Number(cur.capacityLimit) || 0,
         shellThickness: Number(cur.shellThickness) > 0 ? Number(cur.shellThickness) : 1.1,
         lossFactor: Number(cur.lossFactor) > 0 ? Number(cur.lossFactor) : 1.04,
         materials: cur.materials.map((x: any) => ({
@@ -186,6 +187,7 @@ export function normalizeSettings(data: any): PrintOptions {
       r[m] = {
         enabled: cur.enabled !== false,
         dailyLimit: Number(cur.dailyLimit) || 0,
+        capacityLimit: Number(cur.capacityLimit) || 0,
         shellThickness: Number(cur.shellThickness) > 0 ? Number(cur.shellThickness) : 1.1,
         lossFactor: Number(cur.lossFactor) > 0 ? Number(cur.lossFactor) : 1.04,
         materials: oldMats.map(name => ({ name, density: DEFAULT_DENSITY[name] ?? 1.0, coefficient: methodCoeff, minPrice: 0, maxX: 0, maxY: 0, maxZ: 0, colors: [...oldColors] })),
@@ -238,10 +240,48 @@ export const RETENTION_MS = RETENTION_MONTHS * 30 * 24 * 60 * 60 * 1000
 export const VAT_RATE = 0.1
 export const SHIPPING_FEE = 4500
 
-// 공급가(VAT 별도)로부터 부가세·배송비·합계 계산
-export function priceBreakdown(supply: number | null | undefined) {
+// 무게 구간별 배송비 (maxKg=0 → 상한 없음, 초과 구간). 국내 택배 3사 평균 기준 기본값.
+export type ShippingTier = { maxKg: number; fee: number }
+export const DEFAULT_SHIPPING_TIERS: ShippingTier[] = [
+  { maxKg: 2,  fee: 5000 },
+  { maxKg: 5,  fee: 5800 },
+  { maxKg: 10, fee: 7200 },
+  { maxKg: 20, fee: 8800 },
+  { maxKg: 0,  fee: 11700 },
+]
+
+// 무게(kg)에 해당하는 배송비 구간 금액
+export function shippingForWeight(weightKg: number, tiers?: ShippingTier[]): number {
+  const list = (tiers && tiers.length) ? tiers : DEFAULT_SHIPPING_TIERS
+  const w = Number(weightKg) || 0
+  const capped = list.filter(t => Number(t.maxKg) > 0).sort((a, b) => a.maxKg - b.maxKg)
+  for (const t of capped) if (w <= Number(t.maxKg)) return Math.round(Number(t.fee) || 0)
+  const over = list.find(t => Number(t.maxKg) === 0)
+  if (over) return Math.round(Number(over.fee) || 0)
+  return capped.length ? Math.round(Number(capped[capped.length - 1].fee) || 0) : 0
+}
+
+export function normalizeShippingTiers(raw: any): ShippingTier[] {
+  const arr = Array.isArray(raw?.tiers) ? raw.tiers : (Array.isArray(raw) ? raw : null)
+  if (!arr || !arr.length) return [...DEFAULT_SHIPPING_TIERS]
+  return arr.map((t: any) => ({ maxKg: Number(t.maxKg) || 0, fee: Math.round(Number(t.fee) || 0) }))
+}
+
+// 무료배송 기준(공급가 VAT·배송비 제외 기준). 이 금액 이상이면 배송비 0.
+export const DEFAULT_FREE_SHIP_THRESHOLD = 50000
+export function freeShipThreshold(raw: any): number {
+  const v = Number(raw?.freeThreshold)
+  return (isFinite(v) && v >= 0) ? Math.round(v) : DEFAULT_FREE_SHIP_THRESHOLD
+}
+
+// 공급가(VAT 별도)로부터 부가세·배송비·합계 계산.
+// shipping을 넘기면 그 값을 배송비로 사용(무게 구간 결과). 생략하면 기존 고정 배송비.
+export function priceBreakdown(supply: number | null | undefined, shipping?: number) {
   const s = Math.round(Number(supply) || 0)
   const vat = Math.round(s * VAT_RATE)
-  const shipping = s > 0 ? SHIPPING_FEE : 0
-  return { supply: s, vat, shipping, total: s + vat + shipping }
+  const ship = shipping === undefined ? (s > 0 ? SHIPPING_FEE : 0) : Math.round(Number(shipping) || 0)
+  return { supply: s, vat, shipping: ship, total: s + vat + ship }
 }
+
+// 진행 중(배송준비 단계 미만)으로 간주하는 상태 — 혼잡/마감 판정의 기준
+export const ACTIVE_STATUSES = ['pending', 'approved', 'payment_confirmed', 'printing', 'post_processing']

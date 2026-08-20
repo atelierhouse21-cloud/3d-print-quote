@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin-auth'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { calcPrice, calcDays, normalizeSettings, calcPriceFDM, calcPriceV2 } from '@/lib/constants'
+import { calcPrice, calcDays, normalizeSettings, calcPriceFDM, calcPriceV2, ACTIVE_STATUSES, METHODS } from '@/lib/constants'
 import { Resend } from 'resend'
 import crypto from 'crypto'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY || 're_missing_key')
 
 // 서버에서 파일별 계산 근거를 생성(고객 페이지 버전/캐시와 무관하게 항상 저장)
 function buildCalc(fl: any, options: any): any {
@@ -108,27 +108,37 @@ export async function POST(req: NextRequest) {
       printOptions = normalizeSettings(setRow?.value || {})
     } catch { printOptions = {} }
 
-    // 1일 접수 제한(전체 총량) 확인 — 오늘(한국시간) 접수 건수가 제한 이상이면 차단
+    // 접수 마감 확인(방식별) — 현재 진행 중(배송준비 미만) 작업 수가 방식별 마감 기준 이상이면 차단
     try {
-      const { data: limitRow } = await supabaseAdmin.from('settings').select('value').eq('key', 'daily_order_limit').single()
-      const dailyLimit = Number((limitRow?.value as any)?.limit) || 0
-      if (dailyLimit > 0) {
-        const now = new Date()
-        const kst = new Date(now.getTime() + 9 * 3600 * 1000)
-        const startUtc = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), 0, 0, 0) - 9 * 3600 * 1000)
-        const { count } = await supabaseAdmin
+      // 이번 요청에 포함된 방식들
+      const reqMethods = new Set<string>()
+      for (const fl of rawFiles) if (fl?.method) reqMethods.add(String(fl.method))
+      // 마감 기준이 설정된 방식만 검사
+      const methodsToCheck = Array.from(reqMethods).filter(m => Number(printOptions?.[m]?.capacityLimit) > 0)
+      if (methodsToCheck.length) {
+        const { data: activeRows } = await supabaseAdmin
           .from('quotes')
-          .select('id', { count: 'exact', head: true })
+          .select('method, items, status')
           .is('deleted_at', null)
-          .gte('created_at', startUtc.toISOString())
-        if ((count || 0) >= dailyLimit) {
+          .in('status', ACTIVE_STATUSES)
+        // 방식별 진행 중 건수(견적서 1건 기준)
+        const active: Record<string, number> = {}
+        for (const q of activeRows || []) {
+          const ms = new Set<string>()
+          if (q.method) ms.add(String(q.method))
+          if (Array.isArray(q.items)) for (const it of q.items) if (it?.method) ms.add(String(it.method))
+          ms.forEach(mm => { active[mm] = (active[mm] || 0) + 1 })
+        }
+        const closed = methodsToCheck.filter(m => (active[m] || 0) >= Number(printOptions[m].capacityLimit))
+        if (closed.length) {
+          const labels = closed.map(m => METHODS[m]?.label || m).join(', ')
           return NextResponse.json(
-            { error: '금일 견적 접수가 마감되었습니다. 내일 다시 시도해 주세요.' },
+            { error: `현재 ${labels} 방식은 작업량이 많아 접수가 마감되었습니다. 잠시 후 다시 시도해 주세요.` },
             { status: 429 }
           )
         }
       }
-    } catch { /* 제한 확인 실패 시 접수는 진행 */ }
+    } catch { /* 마감 확인 실패 시 접수는 진행 */ }
 
     // 견적번호 생성 + 저장 (동시 접수로 번호가 겹치면 새 번호로 재시도)
     let data: any = null
