@@ -46,12 +46,12 @@ function Milestone({ data }: { data: TrackData }) {
           <div key={step.key} style={{ display:'flex', alignItems:'flex-start', flex:'1 0 auto', minWidth:46 }}>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1 }}>
               <div style={{ width:32, height:32, borderRadius:'50%',
-                background: isCurrent?'#2563eb':isPast?'#10b981':'#e5e7eb',
+                background: isCurrent?'#d4a72c':isPast?'#10b981':'#e5e7eb',
                 color: isCurrent||isPast?'#fff':'#9ca3af',
                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, marginBottom:6 }}>
                 {idx+1}
               </div>
-              <div style={{ fontSize:11, fontWeight:600, whiteSpace:'nowrap', color: isCurrent?'#2563eb':isPast?'#10b981':'#9ca3af' }}>
+              <div style={{ fontSize:11, fontWeight:600, whiteSpace:'nowrap', color: isCurrent?'#d4a72c':isPast?'#10b981':'#9ca3af' }}>
                 {step.label}
               </div>
               <div style={{ fontSize:8.5, color:'#9ca3af', marginTop:3, minHeight:11, textAlign:'center', lineHeight:1.25, letterSpacing:'-.2px' }}>
@@ -95,7 +95,7 @@ export default function TrackPage() {
   }, [])
 
   const inp: React.CSSProperties = { flex:1, minWidth:0, padding:'11px 14px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:15, letterSpacing:1 }
-  const btn: React.CSSProperties = { padding:'11px 20px', borderRadius:10, border:'none', background:'#2563eb', color:'#fff', fontSize:15, fontWeight:600, cursor:'pointer', flexShrink:0 }
+  const btn: React.CSSProperties = { padding:'11px 20px', borderRadius:10, border:'none', background:'#d4a72c', color:'#fff', fontSize:15, fontWeight:600, cursor:'pointer', flexShrink:0 }
 
   return (
     <div style={{ maxWidth:600, margin:'0 auto', padding:'40px 20px 80px' }}>
@@ -122,11 +122,11 @@ export default function TrackPage() {
           <div style={{ padding:'16px 18px', background:'#f9fafb', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
             <div>
               <div style={{ fontSize:12, color:'#9ca3af' }}>견적 번호</div>
-              <div style={{ fontSize:18, fontWeight:800, color:'#2563eb' }}>{data.quote_no}</div>
+              <div style={{ fontSize:18, fontWeight:800, color:'#d4a72c' }}>{data.quote_no}</div>
             </div>
             <span style={{ padding:'4px 14px', borderRadius:20, fontSize:13, fontWeight:700,
-              background: data.status==='rejected'?'#fef2f2':'#eff6ff',
-              color: data.status==='rejected'?'#dc2626':'#1d4ed8' }}>
+              background: data.status==='rejected'?'#fef2f2':'#faf6ea',
+              color: data.status==='rejected'?'#dc2626':'#b8901f' }}>
               {STATUS_LABEL[data.status] || data.status}
             </span>
           </div>

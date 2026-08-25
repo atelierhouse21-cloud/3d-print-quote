@@ -252,7 +252,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 
   return (
     <div style={{borderRadius:10,overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
-      <div ref={mountRef} style={{position:'relative',background:'#eef1f5',height,touchAction:'none'}}>
+      <div ref={mountRef} style={{position:'relative',background:'#f2f0ea',height,touchAction:'none'}}>
         {loading&&<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#6b7280',zIndex:1}}>
           <div style={{fontSize:12}}>분석 중...</div>
         </div>}
@@ -472,7 +472,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
       {/* 헤더 */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 16px',background:'#f9fafb',borderBottom:'1px solid #e5e7eb'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>{idx+1}</span>
+          <span style={{background:'#d4a72c',color:'#18181b',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>{idx+1}</span>
           <span style={{fontWeight:600,fontSize:13,maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.file.name}</span>
         </div>
         <button onClick={()=>onRemove(item.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af',fontSize:18,lineHeight:1,padding:'0 4px'}}>×</button>
@@ -498,11 +498,11 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}}>
               {enabledMethods.map(([k, m])=>(
                 <button key={k} onClick={()=>updMethod(k)} style={{
-                  border:item.method===k?'2px solid #2563eb':'1px solid #e5e7eb',
+                  border:item.method===k?'2px solid #d4a72c':'1px solid #e5e7eb',
                   borderRadius:7,padding:'6px 8px',cursor:'pointer',textAlign:'left',
-                  background:item.method===k?'#eff6ff':'#fafafa',transition:'all .12s'}}>
-                  <div style={{fontSize:12,fontWeight:700,color:item.method===k?'#2563eb':'#1a1a1a'}}>{m.label}</div>
-                  <div style={{fontSize:10,color:item.method===k?'#3b82f6':'#9ca3af',marginTop:1}}>{m.sub}</div>
+                  background:item.method===k?'#faf6ea':'#fafafa',transition:'all .12s'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:item.method===k?'#d4a72c':'#18181b'}}>{m.label}</div>
+                  <div style={{fontSize:10,color:item.method===k?'#c99a2e':'#9ca3af',marginTop:1}}>{m.sub}</div>
                 </button>
               ))}
             </div>
@@ -567,8 +567,8 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
 
           {needsManual ? (
             /* 자동 견적 불가 → 담당자 견적 요청 */
-            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'12px 14px'}}>
-              <div style={{fontSize:12,color:'#1e40af',marginBottom:10,lineHeight:1.6}}>
+            <div style={{background:'#faf6ea',border:'1px solid #e7d9ad',borderRadius:8,padding:'12px 14px'}}>
+              <div style={{fontSize:12,color:'#7c5e12',marginBottom:10,lineHeight:1.6}}>
                 이 파일은 자동 견적이 어려워 담당자 확인이 필요합니다. 아래 <b>담당자 견적 요청</b>을 눌러 주세요. (요청하셔야 다음 단계로 진행됩니다.)
               </div>
               {item.manualReview ? (
@@ -577,7 +577,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
                 </div>
               ) : (
                 <button onClick={()=>onChange(item.id,'manualReview',true as any)}
-                  style={{width:'100%',padding:'10px 0',background:'#2563eb',color:'#fff',border:'none',borderRadius:7,fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                  style={{width:'100%',padding:'10px 0',background:'#d4a72c',color:'#18181b',border:'none',borderRadius:7,fontSize:13,fontWeight:700,cursor:'pointer'}}>
                   담당자 견적 요청
                 </button>
               )}
@@ -800,14 +800,17 @@ export default function Home() {
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         )
-        for (let i=0; i<items.length && i<paths.length; i++) {
-          if (items[i].file && paths[i]) {
-            const { error: upErr } = await supabase.storage
-              .from('quote-files')
-              .upload(paths[i], items[i].file, { upsert:false })
-            if (upErr) console.error(`파일${i+1} 업로드 실패:`, upErr.message)
-          }
-        }
+        // 파일 여러 개를 동시에 업로드(순차 → 병렬로 시간 단축)
+        await Promise.all(
+          items.map((it, i) => {
+            if (it.file && paths[i]) {
+              return supabase.storage.from('quote-files')
+                .upload(paths[i], it.file, { upsert:false })
+                .then(({ error: upErr }) => { if (upErr) console.error(`파일${i+1} 업로드 실패:`, upErr.message) })
+            }
+            return Promise.resolve()
+          })
+        )
       }
       setDone(json.quote_no)
     } catch(e:any) { alert('오류: '+e.message) }
@@ -850,12 +853,12 @@ export default function Home() {
             <div key={i} style={{display:'flex',alignItems:'center',flex:i<STEP_LABELS.length-1?1:undefined,minWidth:0}}>
               <div style={{display:'flex',alignItems:'center',gap:isMobile?5:7,flexShrink:0}}>
                 <div style={{width:isMobile?22:24,height:isMobile?22:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,
-                  background:step>i+1?'#16a34a':step===i+1?'#2563eb':'#fff',
-                  border:`2px solid ${step>i+1?'#16a34a':step===i+1?'#2563eb':'#d1d5db'}`,
+                  background:step>i+1?'#16a34a':step===i+1?'#d4a72c':'#fff',
+                  border:`2px solid ${step>i+1?'#16a34a':step===i+1?'#d4a72c':'#d1d5db'}`,
                   color:step>i+1||step===i+1?'#fff':'#9ca3af'}}>
                   {i+1}
                 </div>
-                <span style={{fontSize:isMobile?11:12,whiteSpace:'nowrap',color:step===i+1?'#1a1a1a':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
+                <span style={{fontSize:isMobile?11:12,whiteSpace:'nowrap',color:step===i+1?'#18181b':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
               </div>
               {i<STEP_LABELS.length-1&&<div style={{flex:1,height:1,background:'#d1d5db',margin:isMobile?'0 5px':'0 8px',minWidth:6}}/>}
             </div>
@@ -891,11 +894,11 @@ export default function Home() {
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
                 <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
                   <input type="checkbox" checked={agreePrivacy} onChange={e=>setAgreePrivacy(e.target.checked)}
-                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                    style={{width:17,height:17,accentColor:'#d4a72c',cursor:'pointer'}}/>
                   <span><span style={{color:'#dc2626'}}>[필수]</span> 개인정보 수집·이용에 동의합니다.</span>
                 </label>
                 <button type="button" onClick={()=>setShowPrivacyBox(v=>!v)}
-                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  style={{background:'none',border:'none',color:'#d4a72c',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
                   {showPrivacyBox?'접기':'자세히'}
                 </button>
               </div>
@@ -905,7 +908,7 @@ export default function Home() {
                   <div><b>· 수집 항목:</b> 이름, 이메일, 연락처, 업체명, 수령(배송) 주소, 업로드한 3D 모델 파일 및 견적 정보</div>
                   <div><b>· 보유·이용 기간:</b> 견적 요청일로부터 {RETENTION_MONTHS}개월 (기간 경과 또는 목적 달성 시 지체 없이 파기). 단, 관계 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.</div>
                   <div><b>· 동의 거부 권리:</b> 동의를 거부할 권리가 있으며, 거부 시 견적 서비스 이용이 제한될 수 있습니다.</div>
-                  <div style={{marginTop:6}}><a href="/privacy" target="_blank" rel="noopener noreferrer" style={{color:'#2563eb',textDecoration:'underline'}}>개인정보처리방침 전문 보기</a></div>
+                  <div style={{marginTop:6}}><a href="/privacy" target="_blank" rel="noopener noreferrer" style={{color:'#d4a72c',textDecoration:'underline'}}>개인정보처리방침 전문 보기</a></div>
                 </div>
               )}
             </div>
@@ -915,11 +918,11 @@ export default function Home() {
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
                 <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
                   <input type="checkbox" checked={agreeMarketing} onChange={e=>setAgreeMarketing(e.target.checked)}
-                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                    style={{width:17,height:17,accentColor:'#d4a72c',cursor:'pointer'}}/>
                   <span><span style={{color:'#6b7280'}}>[선택]</span> 광고·마케팅 활용에 동의합니다.</span>
                 </label>
                 <button type="button" onClick={()=>setShowMarketingBox(v=>!v)}
-                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  style={{background:'none',border:'none',color:'#d4a72c',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
                   {showMarketingBox?'접기':'자세히'}
                 </button>
               </div>
@@ -938,11 +941,11 @@ export default function Home() {
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
                 <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
                   <input type="checkbox" checked={agreeRefund} onChange={e=>setAgreeRefund(e.target.checked)}
-                    style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                    style={{width:17,height:17,accentColor:'#d4a72c',cursor:'pointer'}}/>
                   <span><span style={{color:'#dc2626'}}>[필수]</span> 취소·교환·환불 정책을 확인하였습니다.</span>
                 </label>
                 <button type="button" onClick={()=>setShowRefundBox(v=>!v)}
-                  style={{background:'none',border:'none',color:'#2563eb',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  style={{background:'none',border:'none',color:'#d4a72c',fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
                   {showRefundBox?'접기':'자세히'}
                 </button>
               </div>
@@ -952,7 +955,7 @@ export default function Home() {
                   <div><b>· 제작 착수 전:</b> 취소 및 전액 환불이 가능합니다.</div>
                   <div><b>· 판매자 귀책(출력 불량·파손·오제작):</b> 재제작 또는 환불해 드립니다.</div>
                   <div><b>· 고객 제공 파일의 오류·결함</b>으로 인한 결과물은 교환·환불이 어려울 수 있습니다.</div>
-                  <div style={{marginTop:6}}>자세한 내용은 <a href="/refund-policy" target="_blank" rel="noopener noreferrer" style={{color:'#2563eb',textDecoration:'underline',fontWeight:600}}>취소·교환·환불 정책 전문 보기</a>에서 확인하실 수 있습니다.</div>
+                  <div style={{marginTop:6}}>자세한 내용은 <a href="/refund-policy" target="_blank" rel="noopener noreferrer" style={{color:'#d4a72c',textDecoration:'underline',fontWeight:600}}>취소·교환·환불 정책 전문 보기</a>에서 확인하실 수 있습니다.</div>
                 </div>
               )}
             </div>
@@ -962,12 +965,12 @@ export default function Home() {
               <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}}>증빙 요청 (선택)</div>
               <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,marginBottom:8}}>
                 <input type="checkbox" checked={wantCashReceipt} onChange={e=>setWantCashReceipt(e.target.checked)}
-                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer'}}/>
+                  style={{width:17,height:17,accentColor:'#d4a72c',cursor:'pointer'}}/>
                 <span>현금영수증 발행을 요청합니다.</span>
               </label>
               <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',fontSize:13}}>
                 <input type="checkbox" checked={wantTaxInvoice} onChange={e=>setWantTaxInvoice(e.target.checked)}
-                  style={{width:17,height:17,accentColor:'#2563eb',cursor:'pointer',marginTop:1}}/>
+                  style={{width:17,height:17,accentColor:'#d4a72c',cursor:'pointer',marginTop:1}}/>
                 <span>세금계산서 발행을 요청합니다. <span style={{color:'#6b7280',fontSize:12}}>(영업일 이내 담당자가 별도로 연락드려 발행에 필요한 자료를 안내드립니다.)</span></span>
               </label>
             </div>
@@ -987,15 +990,15 @@ export default function Home() {
             <div
               onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
               onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0])}}
-              style={{border:`2px dashed ${drag?'#2563eb':'#d1d5db'}`,borderRadius:12,padding:'20px',
-                background:drag?'#eff6ff':'#f9fafb',transition:'all .15s',marginBottom:10}}>
+              style={{border:`2px dashed ${drag?'#d4a72c':'#d1d5db'}`,borderRadius:12,padding:'20px',
+                background:drag?'#faf6ea':'#f9fafb',transition:'all .15s',marginBottom:10}}>
               <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
                 <div style={{flex:1,minWidth:200}}>
                   <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>파일을 이 영역에 드래그 하거나</div>
                   <div style={{fontSize:12,color:'#6b7280'}}>STL 파일만 지원</div>
                 </div>
                 <button onClick={()=>fileRef.current?.click()}
-                  style={{...S.btn,background:'#2563eb',color:'#fff',flexShrink:0,fontSize:13}}>
+                  style={{...S.btn,background:'#d4a72c',color:'#18181b',flexShrink:0,fontSize:13}}>
                   + 파일 선택
                 </button>
               </div>
@@ -1010,7 +1013,7 @@ export default function Home() {
             ))}
             {items.length>0&&(
               <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
-                <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>{
+                <button style={{...S.btn,background:'#d4a72c',color:'#18181b'}} onClick={()=>{
                   const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
                   if(pending){alert(`"${pending.file.name}" 파일은 자동 견적이 어려워 담당자 확인이 필요합니다.\n파일 카드의 "담당자 견적 요청" 버튼을 누른 뒤 진행해 주세요.`);return}
                   setStep(2)
@@ -1036,10 +1039,10 @@ export default function Home() {
               <div key={item.id} style={{border:'1px solid #e5e7eb',borderRadius:10,padding:'12px 16px',marginBottom:10}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                   <div style={{display:'flex',alignItems:'center',gap:7}}>
-                    <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
+                    <span style={{background:'#d4a72c',color:'#18181b',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
                     <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
                   </div>
-                  <span style={{fontSize:15,fontWeight:800,color: itemNeedsManual(item,options)?'#2563eb':'#15803d'}}>{itemNeedsManual(item,options) ? '담당자 견적' : (item.vol?krw(linePrice(item, options)):'담당자 산출')}</span>
+                  <span style={{fontSize:15,fontWeight:800,color: itemNeedsManual(item,options)?'#d4a72c':'#15803d'}}>{itemNeedsManual(item,options) ? '담당자 견적' : (item.vol?krw(linePrice(item, options)):'담당자 산출')}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
@@ -1059,24 +1062,24 @@ export default function Home() {
             ))}
 
             {(() => { const b = priceBreakdown(totalPrice, shipUnknown ? 0 : (shipFee ?? 0)); return (
-              <div style={{background:'#eff6ff',borderRadius:10,padding:'14px 16px',marginBottom:14}}>
+              <div style={{background:'#faf6ea',borderRadius:10,padding:'14px 16px',marginBottom:14}}>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:6}}>
                   <span>공급가 {items.length>1?'(전체 합계)':''}</span><span>{krw(b.supply)}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:6}}>
                   <span>부가세 (10%)</span><span>{krw(b.vat)}</span>
                 </div>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:8,paddingBottom:8,borderBottom:'1px solid #bfdbfe'}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#374151',marginBottom:8,paddingBottom:8,borderBottom:'1px solid #e7d9ad'}}>
                   <span>배송비 {!shipUnknown && totalWeightKg>0 ? `(약 ${totalWeightKg.toFixed(1)}kg)` : ''}</span>
                   <span>{shipUnknown ? '담당자 확정' : (freeShip ? '무료' : krw(b.shipping))}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <span style={{fontWeight:700,fontSize:14}}>합계 (VAT·배송비 포함)</span>
-                  <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{shipUnknown ? '담당자 확정' : krw(b.total)}</span>
+                  <span style={{fontSize:20,fontWeight:800,color:'#d4a72c'}}>{shipUnknown ? '담당자 확정' : krw(b.total)}</span>
                 </div>
                 <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : (freeShip ? `공급가 ${krw(freeThreshold)} 이상으로 배송비가 무료입니다` : '무게 구간에 따라 배송비가 산정됩니다')}</div>
                 {freeThreshold > 0 && !freeShip && (
-                  <div style={{marginTop:4,fontSize:11,color:'#2563eb',textAlign:'right',fontWeight:600}}>공급가 {krw(freeThreshold)} 이상 시 배송비 무료</div>
+                  <div style={{marginTop:4,fontSize:11,color:'#d4a72c',textAlign:'right',fontWeight:600}}>공급가 {krw(freeThreshold)} 이상 시 배송비 무료</div>
                 )}
               </div>
             )})()}
@@ -1087,7 +1090,7 @@ export default function Home() {
 
             <div style={{display:'flex',justifyContent:'space-between'}}>
               <button style={S.sBtn} onClick={()=>setStep(1)}>← 이전</button>
-              <button style={{...S.btn,background:closedInCart.length>0?'#9ca3af':'#2563eb',color:'#fff',cursor:closedInCart.length>0?'not-allowed':'pointer'}}
+              <button style={{...S.btn,background:closedInCart.length>0?'#9ca3af':'#d4a72c',color:'#18181b',cursor:closedInCart.length>0?'not-allowed':'pointer'}}
                 disabled={closedInCart.length>0}
                 onClick={()=>{
                   const closedItem = items.find(it => methodClosed(it.method))

@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
 
     console.log('[EMAIL] FROM:', fromEmail, '/ TO(고객):', email, '/ TO(관리자):', adminEmail, '/ SITE:', siteUrl)
 
-    const customerEmailResult = await resend.emails.send({
+    const customerEmailPromise = resend.emails.send({
       from: fromEmail,
       to: email,
       subject: `[${quote_no}] 3D 프린팅 견적 요청이 접수되었습니다`,
@@ -267,14 +267,9 @@ export async function POST(req: NextRequest) {
         </div>
       `,
     })
-    if (customerEmailResult.error) {
-      console.error('[EMAIL] 고객 발송 실패:', JSON.stringify(customerEmailResult.error))
-    } else {
-      console.log('[EMAIL] 고객 발송 성공:', customerEmailResult.data?.id)
-    }
 
     // ── 관리자 알림 이메일 ──────────────────────────────
-    const adminEmailResult = await resend.emails.send({
+    const adminEmailPromise = resend.emails.send({
       from: fromEmail,
       to: adminEmail,
       subject: `[새 견적 ${quote_no}] ${name} — ${method} ${qty}개`,
@@ -299,11 +294,12 @@ export async function POST(req: NextRequest) {
         </div>
       `,
     })
-    if (adminEmailResult.error) {
-      console.error('[EMAIL] 관리자 발송 실패:', JSON.stringify(adminEmailResult.error))
-    } else {
-      console.log('[EMAIL] 관리자 발송 성공:', adminEmailResult.data?.id)
-    }
+    // 고객·관리자 이메일을 동시에 발송(순차 → 병렬로 대기 시간 단축). 하나가 실패해도 접수는 정상 처리.
+    const [custRes, admRes] = await Promise.allSettled([customerEmailPromise, adminEmailPromise])
+    if (custRes.status === 'rejected' || (custRes.value as any)?.error) console.error('[EMAIL] 고객 발송 실패')
+    else console.log('[EMAIL] 고객 발송 성공:', (custRes.value as any)?.data?.id)
+    if (admRes.status === 'rejected' || (admRes.value as any)?.error) console.error('[EMAIL] 관리자 발송 실패')
+    else console.log('[EMAIL] 관리자 발송 성공:', (admRes.value as any)?.data?.id)
 
     return NextResponse.json({ ok: true, quote_no, storage_path, storage_paths: storagePaths, tracking_code: data.tracking_code || null })
   } catch (e: any) {
