@@ -858,7 +858,7 @@ export default function Home() {
                   color:step>i+1||step===i+1?'#fff':'#9ca3af'}}>
                   {i+1}
                 </div>
-                <span style={{fontSize:isMobile?11:12,whiteSpace:'nowrap',color:step===i+1?'#18181b':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
+                <span style={{fontSize:isMobile?11:12,whiteSpace:'nowrap',color:step===i+1?'#fafafa':'#9ca3af',fontWeight:step===i+1?600:400}}>{s}</span>
               </div>
               {i<STEP_LABELS.length-1&&<div style={{flex:1,height:1,background:'#33333a',margin:isMobile?'0 5px':'0 8px',minWidth:6}}/>}
             </div>
