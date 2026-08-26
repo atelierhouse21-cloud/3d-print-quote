@@ -4,13 +4,13 @@ export default function RefundPolicyPage() {
   const wrap: React.CSSProperties = { maxWidth: 760, margin: '0 auto', padding: '40px 20px 80px', color: '#1f2937', lineHeight: 1.8, fontSize: 14 }
   const h1: React.CSSProperties = { fontSize: 22, fontWeight: 700, marginBottom: 8 }
   const h2: React.CSSProperties = { fontSize: 16, fontWeight: 700, margin: '28px 0 8px' }
-  const p: React.CSSProperties = { margin: '0 0 8px', color: '#374151' }
+  const p: React.CSSProperties = { margin: '0 0 8px', color: '#d4d4d8' }
   const li: React.CSSProperties = { margin: '0 0 4px' }
   return (
     <div style={wrap}>
       <h1 style={h1}>취소·교환·환불 정책</h1>
-      <p style={{ color: '#6b7280', marginBottom: 4 }}>3D 프린팅 주문제작 상품 교환·환불 및 품질보증 정책</p>
-      <p style={{ color: '#9ca3af', fontSize: 12 }}>시행일자: 2026년 6월 1일</p>
+      <p style={{ color: '#a1a1aa', marginBottom: 4 }}>3D 프린팅 주문제작 상품 교환·환불 및 품질보증 정책</p>
+      <p style={{ color: '#8a8a90', fontSize: 12 }}>시행일자: 2026년 6월 1일</p>
       <p style={p}>본 정책은 &apos;아틀리에하우스&apos;가 제공하는 3D 프린팅 주문제작 서비스의 상품 제작, 주문 취소, 교환, 반품 및 환불에 관한 기준을 안내하기 위한 것입니다.</p>
 
       <h2 style={h2}>제1조 (목적)</h2>
@@ -110,7 +110,7 @@ export default function RefundPolicyPage() {
         <li style={li}>사업자등록번호: 144-25-01355</li>
       </ul>
 
-      <p style={{ ...p, marginTop: 24, color: '#6b7280' }}>본 정책 시행일: 2026년 6월 1일</p>
+      <p style={{ ...p, marginTop: 24, color: '#a1a1aa' }}>본 정책 시행일: 2026년 6월 1일</p>
     </div>
   )
 }

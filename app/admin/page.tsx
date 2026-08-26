@@ -52,25 +52,25 @@ function CalcDetail({ fl }: { fl: any }) {
   return (
     <div style={{ marginTop:8 }}>
       <button onClick={()=>setOpen(o=>!o)}
-        style={{ padding:'6px 12px', background:'#fff', color:'#6d28d9', border:'1px solid #ddd6fe', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+        style={{ padding:'6px 12px', background:'#232327', color:'#c4b5fd', border:'1px solid #ddd6fe', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
         {open ? '계산 상세 닫기' : '계산 상세'}
       </button>
       {open && (
-        <div style={{ marginTop:8, padding:'12px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8 }}>
+        <div style={{ marginTop:8, padding:'12px 14px', background:'#20182a', border:'1px solid #e9d5ff', borderRadius:8 }}>
           {!calc && (
-            <div style={{ fontSize:11, color:'#b45309', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:6, padding:'7px 10px', marginBottom:10 }}>
+            <div style={{ fontSize:11, color:'#fbbf24', background:'#2a2412', border:'1px solid #fde68a', borderRadius:6, padding:'7px 10px', marginBottom:10 }}>
               이 건은 계산 근거 저장 기능 적용 이전에 접수되어, 상세 계산 과정은 표시되지 않습니다. (이후 접수 건부터 전체 표시)
             </div>
           )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 14px' }}>
             {rows.map(([l,v]) => (
               <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:12, borderBottom:'1px solid #f3e8ff', paddingBottom:3 }}>
-                <span style={{ color:'#6b7280' }}>{l}</span><span style={{ fontWeight:600 }}>{v}</span>
+                <span style={{ color:'#a1a1aa' }}>{l}</span><span style={{ fontWeight:600 }}>{v}</span>
               </div>
             ))}
           </div>
           {formula && (
-            <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e9d5ff', fontSize:11, color:'#6d28d9', lineHeight:1.6 }}>
+            <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e9d5ff', fontSize:11, color:'#c4b5fd', lineHeight:1.6 }}>
               {formula}
             </div>
           )}
@@ -93,17 +93,17 @@ function CalcDetail({ fl }: { fl: any }) {
             }
             lines.push(`⑤ 100원 단위 반올림${calc.minPrice ? ` 후 최소금액 ${won(calc.minPrice)}과 비교(큰 값 적용)` : ''} → ${won(calc.price)}`)
             return (
-              <div style={{ marginTop:10, padding:'10px 12px', background:'#fff', border:'1px solid #e9d5ff', borderRadius:6 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:'#6d28d9', marginBottom:6 }}>계산 과정 (값 대입)</div>
+              <div style={{ marginTop:10, padding:'10px 12px', background:'#232327', border:'1px solid #e9d5ff', borderRadius:6 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'#c4b5fd', marginBottom:6 }}>계산 과정 (값 대입)</div>
                 {lines.map((ln, i) => (
-                  <div key={i} style={{ fontSize:11.5, color:'#374151', lineHeight:1.7, wordBreak:'keep-all' }}>{ln}</div>
+                  <div key={i} style={{ fontSize:11.5, color:'#d4d4d8', lineHeight:1.7, wordBreak:'keep-all' }}>{ln}</div>
                 ))}
               </div>
             )
           })()}
           <div style={{ marginTop:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <span style={{ fontSize:12, color:'#6b7280' }}>산출 예상가 (100원 단위 반올림)</span>
-            <span style={{ fontSize:15, fontWeight:800, color:'#6d28d9' }}>{calc ? won(calc.price) : (fl.price!=null ? won(fl.price) : (fl.manualReview ? '담당자 견적' : '-'))}</span>
+            <span style={{ fontSize:12, color:'#a1a1aa' }}>산출 예상가 (100원 단위 반올림)</span>
+            <span style={{ fontSize:15, fontWeight:800, color:'#c4b5fd' }}>{calc ? won(calc.price) : (fl.price!=null ? won(fl.price) : (fl.manualReview ? '담당자 견적' : '-'))}</span>
           </div>
         </div>
       )}
@@ -142,7 +142,7 @@ function AdminSTLViewer({ path, password }: { path: string; password: string }) 
         const W = mount.clientWidth || 400, H = 240
         geometry.center(); geometry.computeVertexNormals(); geometry.computeBoundingSphere()
         const radius = geometry.boundingSphere?.radius || 1
-        const scene = new THREE.Scene(); scene.background = new THREE.Color(0xeef1f5)
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x232327)
         const camera = new THREE.PerspectiveCamera(35, W/H, radius*0.01, radius*100)
         const dist = radius / Math.sin((35*Math.PI/180)/2) * 1.25
         camera.position.set(dist*0.55, dist*0.4, dist*0.95)
@@ -180,13 +180,13 @@ function AdminSTLViewer({ path, password }: { path: string; password: string }) 
   return (
     <div style={{ marginTop:8 }}>
       <button onClick={()=>setOpen(o=>!o)}
-        style={{ padding:'6px 12px', background:'#fff', color:'#d4a72c', border:'1px solid #e7d9ad', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+        style={{ padding:'6px 12px', background:'#232327', color:'#d4a72c', border:'1px solid #33333a', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
         {open ? '미리보기 닫기' : '3D 미리보기'}
       </button>
       {open && (
-        <div ref={mountRef} style={{ height:240, background:'#f2f0ea', borderRadius:8, marginTop:8, position:'relative', touchAction:'none', overflow:'hidden', border:'1px solid #e5e7eb' }}>
-          {loading && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:'#6b7280' }}>불러오는 중...</div>}
-          {err && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:'#dc2626' }}>{err}</div>}
+        <div ref={mountRef} style={{ height:240, background:'#1f1f23', borderRadius:8, marginTop:8, position:'relative', touchAction:'none', overflow:'hidden', border:'1px solid #33333a' }}>
+          {loading && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:'#a1a1aa' }}>불러오는 중...</div>}
+          {err && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:'#f87171' }}>{err}</div>}
         </div>
       )}
     </div>
@@ -195,25 +195,25 @@ function AdminSTLViewer({ path, password }: { path: string; password: string }) 
 
 const S: Record<string, React.CSSProperties> = {
   wrap: { maxWidth:900, margin:'0 auto', padding:'24px 16px 60px' },
-  card: { background:'#fff', borderRadius:16, border:'1px solid #e5e7eb' },
+  card: { background:'#232327', borderRadius:16, border:'1px solid #33333a' },
   body: { padding:24 },
   btn:  { padding:'9px 20px', borderRadius:9, fontSize:14, fontWeight:600, cursor:'pointer', border:'none', display:'inline-flex', alignItems:'center', gap:6 },
-  sBtn: { padding:'8px 16px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', background:'#fff', color:'#374151', border:'1.5px solid #d1d5db' },
-  inp:  { width:'100%', padding:'10px 12px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:14, fontFamily:'inherit', outline:'none' },
-  lbl:  { fontSize:12, fontWeight:700, color:'#374151', textTransform:'uppercase', letterSpacing:'.4px', display:'block', marginBottom:6 } as React.CSSProperties,
+  sBtn: { padding:'8px 16px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', background:'#232327', color:'#d4d4d8', border:'1.5px solid #33333a' },
+  inp:  { width:'100%', padding:'10px 12px', border:'1.5px solid #33333a', borderRadius:8, fontSize:14, fontFamily:'inherit', outline:'none' },
+  lbl:  { fontSize:12, fontWeight:700, color:'#d4d4d8', textTransform:'uppercase', letterSpacing:'.4px', display:'block', marginBottom:6 } as React.CSSProperties,
   grp:  { display:'flex', flexDirection:'column', gap:6 },
 }
 
 const BADGE: Record<string, React.CSSProperties> = {
-  pending:  { background:'#fffbeb', color:'#92400e', border:'1px solid #fcd34d' },
-  approved: { background:'#f0fdf4', color:'#14532d', border:'1px solid #86efac' },
-  payment_confirmed: { background:'#faf6ea', color:'#7c5e12', border:'1px solid #dcc373' },
-  printing: { background:'#f5f3ff', color:'#5b21b6', border:'1px solid #c4b5fd' },
-  post_processing: { background:'#fdf4ff', color:'#86198f', border:'1px solid #f0abfc' },
-  shipping_ready: { background:'#f0fdfa', color:'#134e4a', border:'1px solid #5eead4' },
-  shipped: { background:'#f0fdf4', color:'#14532d', border:'1px solid #86efac' },
-  issue_reported: { background:'#fef2f2', color:'#991b1b', border:'1px solid #fca5a5' },
-  rejected: { background:'#fef2f2', color:'#7f1d1d', border:'1px solid #fca5a5' },
+  pending:  { background:'#2a2412', color:'#fbbf24', border:'1px solid #fcd34d' },
+  approved: { background:'#16241a', color:'#4ade80', border:'1px solid #86efac' },
+  payment_confirmed: { background:'#26241d', color:'#fbbf24', border:'1px solid #dcc373' },
+  printing: { background:'#20182a', color:'#c4b5fd', border:'1px solid #c4b5fd' },
+  post_processing: { background:'#241826', color:'#c4b5fd', border:'1px solid #f0abfc' },
+  shipping_ready: { background:'#12241f', color:'#4ade80', border:'1px solid #5eead4' },
+  shipped: { background:'#16241a', color:'#4ade80', border:'1px solid #86efac' },
+  issue_reported: { background:'#2a1618', color:'#f87171', border:'1px solid #fca5a5' },
+  rejected: { background:'#2a1618', color:'#f87171', border:'1px solid #fca5a5' },
 }
 
 const BADGE_LABEL: Record<string, string> = {
@@ -277,7 +277,7 @@ function Milestone({ quote }: { quote: Quote }) {
   // pending(검토중) 시각은 접수 시각(created_at) 사용
   const timeFor = (key: string) => key === 'pending' ? quote.created_at : times[key]
   return (
-    <div style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'16px 0', borderBottom:'1px solid #e5e7eb' }}>
+    <div style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'16px 0', borderBottom:'1px solid #33333a' }}>
       {steps.map((step, idx) => {
         const isPast = idx < currentIdx; const isCurrent = idx === currentIdx
         const t = fmtStageTime(timeFor(step.key))
@@ -285,7 +285,7 @@ function Milestone({ quote }: { quote: Quote }) {
           <div key={step.key} style={{ display:'flex', alignItems:'flex-start', flex:1 }}>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flex:1 }}>
               <div style={{ width:32, height:32, borderRadius:'50%',
-                background: isCurrent?'#d4a72c':isPast?'#10b981':'#e5e7eb',
+                background: isCurrent?'#d4a72c':isPast?'#10b981':'#33333a',
                 color: isCurrent||isPast?'#fff':'#9ca3af',
                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, marginBottom:6 }}>
                 {idx+1}
@@ -293,12 +293,12 @@ function Milestone({ quote }: { quote: Quote }) {
               <div style={{ fontSize:11, fontWeight:600, color: isCurrent?'#d4a72c':isPast?'#10b981':'#9ca3af' }}>
                 {step.label}
               </div>
-              <div style={{ fontSize:8.5, color:'#9ca3af', marginTop:3, minHeight:11, textAlign:'center', lineHeight:1.25, letterSpacing:'-.2px' }}>
+              <div style={{ fontSize:8.5, color:'#8a8a90', marginTop:3, minHeight:11, textAlign:'center', lineHeight:1.25, letterSpacing:'-.2px' }}>
                 {t}
               </div>
             </div>
             {idx < steps.length-1 && (
-              <div style={{ flex:0.5, height:2, background: isPast?'#10b981':'#e5e7eb', marginTop:15 }} />
+              <div style={{ flex:0.5, height:2, background: isPast?'#10b981':'#33333a', marginTop:15 }} />
             )}
           </div>
         )
@@ -320,10 +320,10 @@ function MethodSettingCard({
   const [newQual, setNewQual] = useState('')
   const [newColorFor, setNewColorFor] = useState<Record<number, string>>({})
 
-  const inpS:  React.CSSProperties = { padding:'6px 8px', border:'1.5px solid #d1d5db', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' }
-  const delBtn: React.CSSProperties = { background:'#fef2f2', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:13, flexShrink:0, lineHeight:1 }
+  const inpS:  React.CSSProperties = { padding:'6px 8px', border:'1.5px solid #33333a', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' }
+  const delBtn: React.CSSProperties = { background:'#2a1618', color:'#f87171', border:'1px solid #fca5a5', borderRadius:6, width:28, height:28, cursor:'pointer', fontSize:13, flexShrink:0, lineHeight:1 }
   const addBtn: React.CSSProperties = { background:'#d4a72c', color:'#fff', border:'none', borderRadius:6, padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, flexShrink:0 }
-  const secTitle: React.CSSProperties = { fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase' as const, letterSpacing:'.4px', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #e5e7eb' }
+  const secTitle: React.CSSProperties = { fontSize:11, fontWeight:700, color:'#d4d4d8', textTransform:'uppercase' as const, letterSpacing:'.4px', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #33333a' }
 
   const setMaterials = (materials: MaterialCfg[]) => onChange(method, { ...cfg, materials })
   const setQualities = (qualities: QualityCfg[]) => onChange(method, { ...cfg, qualities })
@@ -372,27 +372,27 @@ function MethodSettingCard({
 
   return (
     <div style={{
-      border: `2px solid ${cfg.enabled ? '#d4a72c' : '#e5e7eb'}`,
+      border: `2px solid ${cfg.enabled ? '#d4a72c' : '#33333a'}`,
       borderRadius: 12, overflow: 'hidden', marginBottom: 16,
       opacity: cfg.enabled ? 1 : 0.55, transition: 'all .2s'
     }}>
       {/* 헤더 */}
       <div style={{
         display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 18px',
-        background: cfg.enabled ? '#faf6ea' : '#f9fafb',
-        borderBottom: `1px solid ${cfg.enabled ? '#e7d9ad' : '#e5e7eb'}`
+        background: cfg.enabled ? '#26241d' : '#1f1f23',
+        borderBottom: `1px solid ${cfg.enabled ? '#33333a' : '#33333a'}`
       }}>
         <div>
           <span style={{ fontSize:16, fontWeight:700, color: cfg.enabled?'#d4a72c':'#9ca3af' }}>{m.label}</span>
-          <span style={{ fontSize:12, color:'#6b7280', marginLeft:8 }}>{m.sub}</span>
+          <span style={{ fontSize:12, color:'#a1a1aa', marginLeft:8 }}>{m.sub}</span>
         </div>
         <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
-          <span style={{ fontSize:12, color:'#6b7280' }}>{cfg.enabled ? '활성' : '비활성'}</span>
+          <span style={{ fontSize:12, color:'#a1a1aa' }}>{cfg.enabled ? '활성' : '비활성'}</span>
           <div onClick={() => onChange(method, { ...cfg, enabled: !cfg.enabled })}
             style={{ width:44, height:24, borderRadius:12, cursor:'pointer',
-              background: cfg.enabled ? '#d4a72c' : '#d1d5db', position:'relative', transition:'background .2s' }}>
+              background: cfg.enabled ? '#d4a72c' : '#33333a', position:'relative', transition:'background .2s' }}>
             <div style={{ position:'absolute', top:3, left: cfg.enabled ? 23 : 3, width:18, height:18,
-              borderRadius:'50%', background:'#fff', transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,.2)' }}/>
+              borderRadius:'50%', background:'#232327', transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,.2)' }}/>
           </div>
         </label>
       </div>
@@ -400,48 +400,48 @@ function MethodSettingCard({
       {cfg.enabled && (
         <div style={{ padding:'16px 18px' }}>
           {/* 혼잡 안내 / 접수 마감 기준 (진행 중 작업 수 기준) */}
-          <div style={{ marginBottom:18, padding:'12px 14px', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8 }}>
+          <div style={{ marginBottom:18, padding:'12px 14px', background:'#2a2412', border:'1px solid #fde68a', borderRadius:8 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <span style={{ fontSize:13, fontWeight:700, color:'#92400e' }}>혼잡 안내 기준</span>
+              <span style={{ fontSize:13, fontWeight:700, color:'#fbbf24' }}>혼잡 안내 기준</span>
               <input type="number" step="1" min={0} value={cfg.dailyLimit ?? 0}
                 onChange={e => onChange(method, { ...cfg, dailyLimit: parseInt(e.target.value) || 0 })}
                 style={{ ...inpS, width:80, fontWeight:700 }} />
-              <span style={{ fontSize:12, color:'#92400e' }}>건 이상 진행 중</span>
+              <span style={{ fontSize:12, color:'#fbbf24' }}>건 이상 진행 중</span>
             </div>
-            <p style={{ fontSize:11, color:'#b45309', margin:'8px 0 12px' }}>
+            <p style={{ fontSize:11, color:'#fbbf24', margin:'8px 0 12px' }}>
               현재 진행 중(배송 준비 단계 전)인 이 방식 작업이 기준 건수 이상이면, 고객 화면에 &quot;작업 대기가 많아 시간이 더 걸릴 수 있다&quot;는 안내가 표시됩니다. 접수는 정상 진행됩니다. (0 = 안내 없음)
             </p>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', paddingTop:12, borderTop:'1px solid #fde68a' }}>
-              <span style={{ fontSize:13, fontWeight:700, color:'#b91c1c' }}>접수 마감 기준</span>
+              <span style={{ fontSize:13, fontWeight:700, color:'#f87171' }}>접수 마감 기준</span>
               <input type="number" step="1" min={0} value={cfg.capacityLimit ?? 0}
                 onChange={e => onChange(method, { ...cfg, capacityLimit: parseInt(e.target.value) || 0 })}
                 style={{ ...inpS, width:80, fontWeight:700 }} />
-              <span style={{ fontSize:12, color:'#b91c1c' }}>건 이상 진행 중</span>
+              <span style={{ fontSize:12, color:'#f87171' }}>건 이상 진행 중</span>
             </div>
-            <p style={{ fontSize:11, color:'#b91c1c', margin:'8px 0 0' }}>
+            <p style={{ fontSize:11, color:'#f87171', margin:'8px 0 0' }}>
               현재 진행 중인 이 방식 작업이 기준 건수 이상이면, 고객이 이 방식으로 <b>접수할 수 없습니다</b>(1단계에서 &quot;접수 마감&quot; 표시). 작업이 처리되어 진행 중 건수가 줄면 자동으로 다시 접수가 열립니다. (0 = 마감 없음)
             </p>
           </div>
 
           {method==='FDM' && (
-            <div style={{ marginBottom:18, padding:'12px 14px', background:'#faf6ea', border:'1px solid #e7d9ad', borderRadius:8 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:'#7c5e12', marginBottom:8 }}>FDM 정밀 견적 설정</div>
+            <div style={{ marginBottom:18, padding:'12px 14px', background:'#26241d', border:'1px solid #33333a', borderRadius:8 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#fbbf24', marginBottom:8 }}>FDM 정밀 견적 설정</div>
               <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:12, color:'#374151' }}>실효 외피두께</span>
+                  <span style={{ fontSize:12, color:'#d4d4d8' }}>실효 외피두께</span>
                   <input type="number" step="0.1" min={0} value={cfg.shellThickness ?? 1.1}
                     onChange={e => onChange(method, { ...cfg, shellThickness: parseFloat(e.target.value) || 0 })}
                     style={{ ...inpS, width:70, fontWeight:700 }} />
-                  <span style={{ fontSize:12, color:'#6b7280' }}>mm</span>
+                  <span style={{ fontSize:12, color:'#a1a1aa' }}>mm</span>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:12, color:'#374151' }}>손실 보정계수</span>
+                  <span style={{ fontSize:12, color:'#d4d4d8' }}>손실 보정계수</span>
                   <input type="number" step="0.01" min={1} value={cfg.lossFactor ?? 1.04}
                     onChange={e => onChange(method, { ...cfg, lossFactor: parseFloat(e.target.value) || 1 })}
                     style={{ ...inpS, width:70, fontWeight:700 }} />
                 </div>
               </div>
-              <p style={{ fontSize:11, color:'#7c5e12', margin:'8px 0 0', lineHeight:1.6 }}>
+              <p style={{ fontSize:11, color:'#fbbf24', margin:'8px 0 0', lineHeight:1.6 }}>
                 금액 = 밀도 × (외피부피 + 내부부피 × 채움율) × 수량 × 손실계수 × <b>단가계수(원/g)</b> × 품질보정값<br/>
                 외피부피 = 표면적 × 실효외피두께. 외벽 3줄·바닥/천장 4층이면 대략 1.0~1.2mm 권장, 손실계수는 1.03~1.05 권장.
               </p>
@@ -450,55 +450,55 @@ function MethodSettingCard({
 
           {/* 소재 & 색상 & 단가계수 */}
           <div style={{ marginBottom:18 }}>
-            <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 최소금액 &amp; 색상 <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.materials.length})</span></div>
-            <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 10px' }}>
+            <div style={secTitle}>소재 &amp; 밀도 &amp; 단가계수 &amp; 최소금액 &amp; 색상 <span style={{ color:'#8a8a90', fontWeight:400 }}>({cfg.materials.length})</span></div>
+            <p style={{ fontSize:11, color:'#a1a1aa', margin:'0 0 10px' }}>
               {method==='FDM'
                 ? <>FDM 예상금액은 위 <b>FDM 정밀 견적 설정</b>의 수식으로 계산됩니다. <b>단가계수는 원/g(무게 기준)</b>입니다. 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).</>
                 : <>예상금액 = 부피 × 밀도 × <b>단가계수(소재별)</b> × 수량 × 품질보정값 × 재료비율 &nbsp;|&nbsp; 계산값이 <b>최소금액</b>보다 작으면 최소금액으로 적용됩니다(0이면 미적용).</>}
             </p>
             {cfg.materials.map((mat, i) => (
-              <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#fff' }}>
+              <div key={i} style={{ border:'1px solid #33333a', borderRadius:8, padding:'10px 12px', marginBottom:8, background:'#232327' }}>
                 <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
                   <input value={mat.name} onChange={e => updMatName(i, e.target.value)} placeholder="소재명"
                     style={{ ...inpS, flex:1, minWidth:90, fontWeight:600 }} />
                   <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                    <span style={{ fontSize:11, color:'#6b7280' }}>밀도</span>
+                    <span style={{ fontSize:11, color:'#a1a1aa' }}>밀도</span>
                     <input type="number" step="0.01" min={0} value={mat.density}
                       onChange={e => updMatDensity(i, e.target.value)} style={{ ...inpS, width:60 }} />
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                    <span style={{ fontSize:11, color:'#6b7280' }}>단가계수</span>
+                    <span style={{ fontSize:11, color:'#a1a1aa' }}>단가계수</span>
                     <input type="number" step="1" min={0} value={mat.coefficient}
                       onChange={e => updMatCoeff(i, e.target.value)} style={{ ...inpS, width:80, fontWeight:700 }} />
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                    <span style={{ fontSize:11, color:'#6b7280' }}>최소금액</span>
+                    <span style={{ fontSize:11, color:'#a1a1aa' }}>최소금액</span>
                     <input type="number" step="100" min={0} value={mat.minPrice}
                       onChange={e => updMatMinPrice(i, e.target.value)} style={{ ...inpS, width:90 }} />
                   </div>
                   <button onClick={() => removeMat(i)} title="소재 삭제" style={delBtn}>×</button>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:11, color:'#6b7280', fontWeight:700 }}>최대 출력 사이즈(mm)</span>
+                  <span style={{ fontSize:11, color:'#a1a1aa', fontWeight:700 }}>최대 출력 사이즈(mm)</span>
                   {(['maxX','maxY','maxZ'] as const).map(ax => (
                     <div key={ax} style={{ display:'flex', alignItems:'center', gap:3 }}>
-                      <span style={{ fontSize:11, color:'#9ca3af' }}>{ax==='maxX'?'X':ax==='maxY'?'Y':'Z'}</span>
+                      <span style={{ fontSize:11, color:'#8a8a90' }}>{ax==='maxX'?'X':ax==='maxY'?'Y':'Z'}</span>
                       <input type="number" step="1" min={0} value={mat[ax]}
                         onChange={e => updMatMax(i, ax, e.target.value)} style={{ ...inpS, width:64 }} />
                     </div>
                   ))}
-                  <span style={{ fontSize:10, color:'#9ca3af' }}>0 = 무제한</span>
+                  <span style={{ fontSize:10, color:'#8a8a90' }}>0 = 무제한</span>
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
-                  <span style={{ fontSize:11, color:'#9ca3af', fontWeight:700 }}>색상:</span>
+                  <span style={{ fontSize:11, color:'#8a8a90', fontWeight:700 }}>색상:</span>
                   {mat.colors.map(c => (
-                    <span key={c} style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#faf6ea',
-                      border:'1px solid #e7d9ad', borderRadius:6, padding:'3px 8px', fontSize:12 }}>
+                    <span key={c} style={{ display:'inline-flex', alignItems:'center', gap:4, background:'#26241d',
+                      border:'1px solid #33333a', borderRadius:6, padding:'3px 8px', fontSize:12 }}>
                       {c}
-                      <span onClick={() => removeColor(i, c)} style={{ cursor:'pointer', color:'#9ca3af', fontWeight:700 }}>×</span>
+                      <span onClick={() => removeColor(i, c)} style={{ cursor:'pointer', color:'#8a8a90', fontWeight:700 }}>×</span>
                     </span>
                   ))}
-                  {mat.colors.length === 0 && <span style={{ fontSize:11, color:'#dc2626' }}>색상을 1개 이상 추가하세요</span>}
+                  {mat.colors.length === 0 && <span style={{ fontSize:11, color:'#f87171' }}>색상을 1개 이상 추가하세요</span>}
                   <span style={{ display:'inline-flex', gap:4, alignItems:'center' }}>
                     <input value={newColorFor[i] || ''} onChange={e => setNewColorFor(p => ({ ...p, [i]: e.target.value }))}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addColor(i) } }}
@@ -518,21 +518,21 @@ function MethodSettingCard({
 
           {/* 품질 & 보정값 & 채움율 */}
           <div>
-            <div style={secTitle}>품질 &amp; 보정값 &amp; {method==='FDM'?'채움율':'재료비율'} <span style={{ color:'#9ca3af', fontWeight:400 }}>({cfg.qualities.length})</span></div>
+            <div style={secTitle}>품질 &amp; 보정값 &amp; {method==='FDM'?'채움율':'재료비율'} <span style={{ color:'#8a8a90', fontWeight:400 }}>({cfg.qualities.length})</span></div>
             {cfg.qualities.map((q, i) => (
               <div key={i} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
                 <input value={q.name} onChange={e => updQualName(i, e.target.value)} placeholder="품질명"
                   style={{ ...inpS, flex:1, minWidth:90 }} />
                 <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                  <span style={{ fontSize:11, color:'#6b7280' }}>보정값</span>
+                  <span style={{ fontSize:11, color:'#a1a1aa' }}>보정값</span>
                   <input type="number" step="0.1" min={0} value={q.factor}
                     onChange={e => updQualFactor(i, e.target.value)} style={{ ...inpS, width:60 }} />
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                  <span style={{ fontSize:11, color:'#6b7280' }}>{method==='FDM'?'채움율':'재료비율'}</span>
+                  <span style={{ fontSize:11, color:'#a1a1aa' }}>{method==='FDM'?'채움율':'재료비율'}</span>
                   <input type="number" step="1" min={0} max={100} value={q.infill ?? 100}
                     onChange={e => updQualInfill(i, e.target.value)} style={{ ...inpS, width:64, fontWeight:700 }} />
-                  <span style={{ fontSize:11, color:'#9ca3af' }}>%</span>
+                  <span style={{ fontSize:11, color:'#8a8a90' }}>%</span>
                 </div>
                 <button onClick={() => removeQual(i)} title="품질 삭제" style={delBtn}>×</button>
               </div>
@@ -543,7 +543,7 @@ function MethodSettingCard({
                 placeholder="새 품질명 입력 (예: 표준 0.2mm)" style={{ ...inpS, flex:1 }} />
               <button onClick={addQual} style={addBtn}>+ 품질 추가</button>
             </div>
-            <p style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>
+            <p style={{ fontSize:11, color:'#8a8a90', marginTop:6 }}>
               보정값 1.0 = 기본가. {method==='FDM'
                 ? <><b>채움율(%)</b>은 내부 채움(infill) 비율입니다. 예) 15% 채움 → 15, 45% 채움 → 45. FDM은 외피(100%)+내부(채움율)로 재료 소모량을 계산합니다.</>
                 : <><b>재료비율(%)</b>은 부피 기준 금액에 곱하는 비율입니다(100 = 그대로).</>}
@@ -842,7 +842,7 @@ export default function AdminPage() {
     <div style={{ maxWidth:400, margin:'80px auto', padding:24 }}>
       <div style={{ textAlign:'center', marginBottom:32 }}>
         <h2 style={{ fontSize:20, fontWeight:700 }}>관리자 로그인</h2>
-        <p style={{ color:'#6b7280', marginTop:4 }}>3D 프린팅 견적 관리 시스템</p>
+        <p style={{ color:'#a1a1aa', marginTop:4 }}>3D 프린팅 견적 관리 시스템</p>
       </div>
       <div style={S.card}><div style={S.body}>
         <div style={S.grp}>
@@ -851,11 +851,11 @@ export default function AdminPage() {
             onKeyDown={e=>e.key==='Enter'&&login()} style={S.inp} placeholder="비밀번호 입력" autoFocus />
         </div>
         {locked ? (
-          <div style={{ marginTop:10, fontSize:13, color:'#dc2626', fontWeight:600 }}>
+          <div style={{ marginTop:10, fontSize:13, color:'#f87171', fontWeight:600 }}>
             시도 횟수를 초과했습니다. 약 1분 후 다시 시도해 주세요.
           </div>
         ) : failCount > 0 ? (
-          <div style={{ marginTop:10, fontSize:13, color:'#dc2626' }}>
+          <div style={{ marginTop:10, fontSize:13, color:'#f87171' }}>
             비밀번호가 올바르지 않습니다. (남은 시도: {MAX_LOGIN_TRIES - failCount}/{MAX_LOGIN_TRIES}회)
           </div>
         ) : null}
@@ -876,50 +876,50 @@ export default function AdminPage() {
         <span style={{ padding:'3px 12px', borderRadius:20, fontSize:12, fontWeight:600, ...BADGE[sel.status] }}>
           {BADGE_LABEL[sel.status]}
         </span>
-        <span style={{ fontSize:13, color:'#9ca3af' }}>{new Date(sel.created_at).toLocaleString('ko-KR')}</span>
+        <span style={{ fontSize:13, color:'#8a8a90' }}>{new Date(sel.created_at).toLocaleString('ko-KR')}</span>
       </div>
 
       {sel.status !== 'rejected' && <Milestone quote={sel} />}
 
       <Section title="견적 정보" style={{ marginBottom:12 }}>
         {(sel as any).tracking_code && (
-          <div style={{ marginBottom:12, padding:'10px 14px', background:'#faf6ea', border:'1px solid #e7d9ad', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
-            <span style={{ fontSize:12, color:'#7c5e12', fontWeight:600 }}>고객 확인번호</span>
-            <span style={{ fontSize:15, fontWeight:800, color:'#7c5e12', letterSpacing:'0.5px', fontFamily:'monospace' }}>{(sel as any).tracking_code}</span>
+          <div style={{ marginBottom:12, padding:'10px 14px', background:'#26241d', border:'1px solid #33333a', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
+            <span style={{ fontSize:12, color:'#fbbf24', fontWeight:600 }}>고객 확인번호</span>
+            <span style={{ fontSize:15, fontWeight:800, color:'#fbbf24', letterSpacing:'0.5px', fontFamily:'monospace' }}>{(sel as any).tracking_code}</span>
           </div>
         )}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <Info label="견적 번호" value={sel.quote_no} />
           <div style={{ marginBottom:12 }}>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>다음 단계 처리</label>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#a1a1aa', marginBottom:6 }}>다음 단계 처리</label>
             {sel.status === 'pending' && (
-              <div style={{ fontSize:13, color:'#92400e', background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:8, padding:'9px 12px' }}>
+              <div style={{ fontSize:13, color:'#fbbf24', background:'#2a2412', border:'1px solid #fcd34d', borderRadius:8, padding:'9px 12px' }}>
                 아래 <b>관리자 결정</b>에서 금액·납기를 입력해 <b>승인</b>하거나 거절하세요.
               </div>
             )}
             {sel.status === 'shipping_ready' && (
-              <div style={{ fontSize:13, color:'#134e4a', background:'#f0fdfa', border:'1px solid #5eead4', borderRadius:8, padding:'9px 12px' }}>
+              <div style={{ fontSize:13, color:'#4ade80', background:'#12241f', border:'1px solid #5eead4', borderRadius:8, padding:'9px 12px' }}>
                 아래 <b>송장번호</b>를 입력하면 발송 완료 처리되고 메일이 발송됩니다.
               </div>
             )}
             {sel.status === 'shipped' && (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <div style={{ fontSize:13, color:'#15803d', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'9px 12px' }}>
+                <div style={{ fontSize:13, color:'#4ade80', background:'#16241a', border:'1px solid #86efac', borderRadius:8, padding:'9px 12px' }}>
                   모든 단계가 완료되었습니다.
                 </div>
                 <button onClick={createAS} disabled={loading}
-                  style={{ ...S.sBtn, color:'#b45309', border:'1.5px solid #fcd34d', background:'#fffbeb', width:'100%', justifyContent:'center' }}>
+                  style={{ ...S.sBtn, color:'#fbbf24', border:'1.5px solid #fcd34d', background:'#2a2412', width:'100%', justifyContent:'center' }}>
                   A/S 접수 (동일 내용 새 견적 생성)
                 </button>
               </div>
             )}
             {sel.status === 'rejected' && (
-              <div style={{ fontSize:13, color:'#7f1d1d', background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:8, padding:'9px 12px' }}>
+              <div style={{ fontSize:13, color:'#f87171', background:'#2a1618', border:'1px solid #fca5a5', borderRadius:8, padding:'9px 12px' }}>
                 거절 처리된 견적입니다.
               </div>
             )}
             {sel.status === 'issue_reported' && (
-              <div style={{ fontSize:13, color:'#991b1b', background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:8, padding:'9px 12px' }}>
+              <div style={{ fontSize:13, color:'#f87171', background:'#2a1618', border:'1px solid #fca5a5', borderRadius:8, padding:'9px 12px' }}>
                 문제 상황 처리 중입니다. 아래에서 내용을 관리하세요.
               </div>
             )}
@@ -930,7 +930,7 @@ export default function AdminPage() {
                   {loading ? '처리 중...' : `${NEXT_STEP[sel.status].label} →`}
                 </button>
                 <button onClick={()=>{ setIssueDraft((sel.issue_note as string)||''); setShowIssueForm(true) }} disabled={loading}
-                  style={{ ...S.sBtn, color:'#dc2626', border:'1.5px solid #fca5a5', width:'100%', justifyContent:'center' }}>
+                  style={{ ...S.sBtn, color:'#f87171', border:'1.5px solid #fca5a5', width:'100%', justifyContent:'center' }}>
                   문제 상황 접수
                 </button>
               </div>
@@ -940,11 +940,11 @@ export default function AdminPage() {
 
         {/* 문제 상황 내용 작성 폼 */}
         {showIssueForm && (
-          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
-            <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#dc2626', marginBottom:6 }}>문제 상황 내용 (고객에게 메일로 전달됩니다)</label>
+          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #33333a' }}>
+            <label style={{ display:'block', fontSize:12, fontWeight:700, color:'#f87171', marginBottom:6 }}>문제 상황 내용 (고객에게 메일로 전달됩니다)</label>
             <textarea value={issueDraft} onChange={e=>setIssueDraft(e.target.value)}
               placeholder="발생한 문제 상황을 상세히 입력하세요..."
-              style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, minHeight:90, resize:'vertical', fontFamily:'inherit' }} />
+              style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #33333a', borderRadius:8, fontSize:13, minHeight:90, resize:'vertical', fontFamily:'inherit' }} />
             <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:8 }}>
               <button onClick={()=>{ setShowIssueForm(false); setIssueDraft('') }} disabled={loading}
                 style={{ ...S.sBtn }}>취소</button>
@@ -956,16 +956,16 @@ export default function AdminPage() {
           </div>
         )}
         {sel.status === 'shipping_ready' && (
-          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
-            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>배송사 / 송장번호</label>
+          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #33333a' }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#a1a1aa', marginBottom:6 }}>배송사 / 송장번호</label>
             <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
               <select id={`carrier-${sel.id}`} defaultValue={(sel as any).shipping_company || COURIERS[0]}
-                style={{ padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, minWidth:140 }}>
+                style={{ padding:'8px 10px', border:'1.5px solid #33333a', borderRadius:8, fontSize:13, minWidth:140 }}>
                 {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <input type="text" placeholder="송장번호 입력" defaultValue={(sel as any).tracking_number || ''}
                 id={`tracking-${sel.id}`}
-                style={{ flex:1, minWidth:140, padding:'8px 10px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13 }} />
+                style={{ flex:1, minWidth:140, padding:'8px 10px', border:'1.5px solid #33333a', borderRadius:8, fontSize:13 }} />
               <button onClick={async () => {
                 const carrierEl  = document.getElementById(`carrier-${sel.id}`) as HTMLSelectElement
                 const input      = document.getElementById(`tracking-${sel.id}`) as HTMLInputElement
@@ -1023,15 +1023,15 @@ export default function AdminPage() {
         <Section title="업로드 파일">
           {Array.isArray((sel as any).items) && (sel as any).items.length > 0 ? (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <div style={{ fontSize:12, color:'#6b7280', fontWeight:700 }}>총 {(sel as any).items.length}개 파일</div>
+              <div style={{ fontSize:12, color:'#a1a1aa', fontWeight:700 }}>총 {(sel as any).items.length}개 파일</div>
               {((sel as any).items as any[]).map((fl, i) => (
-                <div key={i} style={{ border:'1px solid #e5e7eb', borderRadius:10, padding:'12px 14px', background:'#fafafa' }}>
+                <div key={i} style={{ border:'1px solid #33333a', borderRadius:10, padding:'12px 14px', background:'#1f1f23' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:11, color:'#9ca3af', fontWeight:700, marginBottom:2, display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ fontSize:11, color:'#8a8a90', fontWeight:700, marginBottom:2, display:'flex', alignItems:'center', gap:6 }}>
                         파일 {i+1}
-                        {fl.manualReview && <span style={{ background:'#f2e8c8', color:'#7c5e12', fontWeight:700, borderRadius:20, padding:'1px 8px', fontSize:10 }}>담당자 견적 요청</span>}
-                        {fl.objectCount != null && fl.objectCount > 1 && <span style={{ background:'#fef3c7', color:'#92400e', fontWeight:700, borderRadius:20, padding:'1px 8px', fontSize:10 }}>개체 {fl.objectCount}개</span>}
+                        {fl.manualReview && <span style={{ background:'#f2e8c8', color:'#fbbf24', fontWeight:700, borderRadius:20, padding:'1px 8px', fontSize:10 }}>담당자 견적 요청</span>}
+                        {fl.objectCount != null && fl.objectCount > 1 && <span style={{ background:'#2a2412', color:'#fbbf24', fontWeight:700, borderRadius:20, padding:'1px 8px', fontSize:10 }}>개체 {fl.objectCount}개</span>}
                       </div>
                       <div style={{ fontSize:13, fontWeight:600, wordBreak:'break-all' }}>{fl.file_name || '-'}</div>
                     </div>
@@ -1054,8 +1054,8 @@ export default function AdminPage() {
                     <Info label="예상가" value={fl.manualReview ? '담당자 견적' : (fl.price!=null ? krw(fl.price) : '-')} bold />
                   </div>
                   {fl.note && (
-                    <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid #e5e7eb', fontSize:12, color:'#374151' }}>
-                      <b style={{ color:'#6b7280' }}>요청:</b> {fl.note}
+                    <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid #33333a', fontSize:12, color:'#d4d4d8' }}>
+                      <b style={{ color:'#a1a1aa' }}>요청:</b> {fl.note}
                     </div>
                   )}
                   {fl.file_path && <AdminSTLViewer path={fl.file_path} password={password} />}
@@ -1098,7 +1098,7 @@ export default function AdminPage() {
           <Info label="자동 견적가(합계)" value={krw(sel.auto_price)||'-'} bold />
         </div>
         {(() => { const b = priceBreakdown(sel.auto_price); return (
-          <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e5e7eb', display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
+          <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #33333a', display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
             <Info label="공급가" value={krw(b.supply)} />
             <Info label="부가세(10%)" value={krw(b.vat)} />
             <Info label="배송비" value={krw(b.shipping)} />
@@ -1106,7 +1106,7 @@ export default function AdminPage() {
           </div>
         )})()}
         {sel.note && (
-          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+          <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #33333a' }}>
             <Info label="고객 요청 사항" value={sel.note} />
           </div>
         )}
@@ -1133,7 +1133,7 @@ export default function AdminPage() {
             </div>
           </div>
           <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
-            <button style={{ ...S.btn, background:'#fff', color:'#dc2626', border:'1.5px solid #fca5a5' }}
+            <button style={{ ...S.btn, background:'#232327', color:'#f87171', border:'1.5px solid #fca5a5' }}
               onClick={()=>decide('rejected')} disabled={loading}>거절</button>
             <button style={{ ...S.btn, background:'#16a34a', color:'#fff' }}
               onClick={()=>decide('approved')} disabled={loading}>
@@ -1147,7 +1147,7 @@ export default function AdminPage() {
           {(sel as any).final_days  && <Info label="확정 납기" value={(sel as any).final_days} />}
           {(sel as any).admin_note  && <Info label="관리자 메모" value={(sel as any).admin_note} />}
           {sel.status === 'shipped' && (
-            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
+            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #33333a' }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12 }}>
                 <Info label="배송사"  value={(sel as any).shipping_company || '-'} />
                 <Info label="송장번호" value={(sel as any).tracking_number || '-'} bold />
@@ -1155,11 +1155,11 @@ export default function AdminPage() {
             </div>
           )}
           {sel.status === 'issue_reported' && (
-            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e5e7eb' }}>
-              <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#6b7280', marginBottom:6 }}>문제 상황 내용</label>
+            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #33333a' }}>
+              <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#a1a1aa', marginBottom:6 }}>문제 상황 내용</label>
               <textarea defaultValue={(sel as any).issue_note || ''} id={`issue-note-${sel.id}`}
                 placeholder="발생한 문제 상황을 상세히 입력하세요..."
-                style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #d1d5db', borderRadius:8, fontSize:13, minHeight:100, resize:'vertical', fontFamily:'inherit' }} />
+                style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #33333a', borderRadius:8, fontSize:13, minHeight:100, resize:'vertical', fontFamily:'inherit' }} />
               <button onClick={async () => {
                 const textarea = document.getElementById(`issue-note-${sel.id}`) as HTMLTextAreaElement
                 const issueNote = textarea.value.trim()
@@ -1191,7 +1191,7 @@ export default function AdminPage() {
     <div style={S.wrap}>
       <div style={{ marginBottom:20 }}>
         <h1 style={{ fontSize:20, fontWeight:700, marginBottom:16 }}>견적 관리 대시보드</h1>
-        <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'2px solid #e5e7eb' }}>
+        <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'2px solid #33333a' }}>
           <button onClick={()=>setTab('quotes')} style={{
             padding:'10px 20px', background:'none', border:'none',
             borderBottom: tab==='quotes'?'3px solid #d4a72c':'3px solid transparent',
@@ -1209,12 +1209,12 @@ export default function AdminPage() {
       {tab === 'quotes' && (
         <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-            <div style={{ fontSize:13, color:'#6b7280' }}>
+            <div style={{ fontSize:13, color:'#a1a1aa' }}>
               전체 {activeQuotes.length}건 &nbsp;·&nbsp;
-              <span style={{ color:'#d97706', fontWeight:600 }}>검토 중 {counts.pending}건</span> &nbsp;·&nbsp;
-              <span style={{ color:'#16a34a', fontWeight:600 }}>승인 {counts.approved}건</span> &nbsp;·&nbsp;
+              <span style={{ color:'#fbbf24', fontWeight:600 }}>검토 중 {counts.pending}건</span> &nbsp;·&nbsp;
+              <span style={{ color:'#4ade80', fontWeight:600 }}>승인 {counts.approved}건</span> &nbsp;·&nbsp;
               거절 {counts.rejected}건 &nbsp;·&nbsp;
-              <span style={{ color:'#dc2626', fontWeight:600 }}>삭제 {counts.deleted}건</span>
+              <span style={{ color:'#f87171', fontWeight:600 }}>삭제 {counts.deleted}건</span>
             </div>
             <button style={S.sBtn} onClick={refresh}>↻ 새로고침</button>
           </div>
@@ -1222,8 +1222,8 @@ export default function AdminPage() {
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
             <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
               <select value={filter} onChange={e=>{ setFilter(e.target.value as typeof filter); setVisibleCount(30) }}
-                style={{ padding:'9px 14px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:14, fontWeight:600,
-                  background:'#fff', cursor:'pointer', minWidth:150, color: filter==='deleted'?'#dc2626':'#18181b' }}>
+                style={{ padding:'9px 14px', border:'1.5px solid #33333a', borderRadius:10, fontSize:14, fontWeight:600,
+                  background:'#232327', cursor:'pointer', minWidth:150, color: filter==='deleted'?'#dc2626':'#18181b' }}>
                 <option value="all">전체 ({counts.all})</option>
                 <option value="pending">검토중 ({counts.pending})</option>
                 <option value="approved">승인됨 ({counts.approved})</option>
@@ -1234,7 +1234,7 @@ export default function AdminPage() {
               </select>
               <input value={search} onChange={e=>{ setSearch(e.target.value); setVisibleCount(30) }}
                 placeholder="견적번호·이름·이메일·업체·연락처·확인번호 검색"
-                style={{ padding:'9px 12px', border:'1.5px solid #d1d5db', borderRadius:10, fontSize:13, minWidth:220 }} />
+                style={{ padding:'9px 12px', border:'1.5px solid #33333a', borderRadius:10, fontSize:13, minWidth:220 }} />
             </div>
             {filter !== 'deleted' && (
               <button onClick={bulkDelete} disabled={loading || selectedIds.length===0}
@@ -1242,7 +1242,7 @@ export default function AdminPage() {
                   padding:'8px 16px', borderRadius:8, fontSize:13, fontWeight:600,
                   cursor: selectedIds.length===0 ? 'not-allowed' : 'pointer',
                   border:'1.5px solid #fca5a5',
-                  background: selectedIds.length===0 ? '#fafafa' : '#fef2f2',
+                  background: selectedIds.length===0 ? '#fafafa' : '#2a1618',
                   color: selectedIds.length===0 ? '#9ca3af' : '#dc2626',
                 }}>
                 선택 삭제{selectedIds.length>0 ? ` (${selectedIds.length})` : ''}
@@ -1252,7 +1252,7 @@ export default function AdminPage() {
 
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {searched.length === 0 && (
-              <div style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>
+              <div style={{ textAlign:'center', padding:'40px 0', color:'#8a8a90' }}>
                 {kw ? '검색 결과가 없습니다' : (filter==='deleted' ? '삭제된 견적이 없습니다' : '견적 요청이 없습니다')}
               </div>
             )}
@@ -1264,7 +1264,7 @@ export default function AdminPage() {
                 <div key={q.id} style={{
                   display:'flex', alignItems:'center', gap:10, padding:'14px 16px',
                   background: checked ? '#faf6ea' : '#fff',
-                  border:`1px solid ${checked ? '#dcc373' : '#e5e7eb'}`, borderRadius:12, transition:'all .15s',
+                  border:`1px solid ${checked ? '#dcc373' : '#33333a'}`, borderRadius:12, transition:'all .15s',
                 }}>
                   <input type="checkbox" checked={checked} onChange={()=>toggleSelect(q.id)}
                     style={{ width:17, height:17, cursor:'pointer', accentColor:'#d4a72c', flexShrink:0 }} />
@@ -1278,20 +1278,20 @@ export default function AdminPage() {
                         </span>
                         <span style={{ padding:'2px 8px', borderRadius:20, fontSize:10, fontWeight:600,
                           ...(q.marketing_consent
-                            ? { background:'#f0fdf4', color:'#15803d', border:'1px solid #86efac' }
-                            : { background:'#f3f4f6', color:'#9ca3af', border:'1px solid #e5e7eb' }) }}>
+                            ? { background:'#16241a', color:'#4ade80', border:'1px solid #86efac' }
+                            : { background:'#1f1f23', color:'#8a8a90', border:'1px solid #33333a' }) }}>
                           마케팅 {q.marketing_consent ? '동의' : '미동의'}
                         </span>
-                        <span style={{ fontSize:11, color:'#9ca3af' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
+                        <span style={{ fontSize:11, color:'#8a8a90' }}>{new Date(q.created_at).toLocaleString('ko-KR')}</span>
                       </div>
-                      <div style={{ fontSize:13, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      <div style={{ fontSize:13, color:'#a1a1aa', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {q.file_name} &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} &nbsp;·&nbsp; {q.qty}개
                       </div>
                     </div>
                     <div style={{ textAlign:'right', flexShrink:0 }}>
                       <div style={{ fontSize:15, fontWeight:700 }}>{krw(q.final_price||q.auto_price)}</div>
                     </div>
-                    <span style={{ color:'#9ca3af', fontSize:18 }}>›</span>
+                    <span style={{ color:'#8a8a90', fontSize:18 }}>›</span>
                   </div>
                 </div>
               )
@@ -1299,28 +1299,28 @@ export default function AdminPage() {
 
             {/* 삭제된 견적 — 요약·읽기전용·파일 제외 */}
             {filter === 'deleted' && pageItems.map(q => (
-              <div key={q.id} style={{ padding:'12px 16px', background:'#fafafa', border:'1px solid #e5e7eb', borderRadius:12 }}>
+              <div key={q.id} style={{ padding:'12px 16px', background:'#1f1f23', border:'1px solid #33333a', borderRadius:12 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
-                  <span style={{ fontWeight:700, fontSize:14, color:'#6b7280' }}>{q.quote_no}</span>
+                  <span style={{ fontWeight:700, fontSize:14, color:'#a1a1aa' }}>{q.quote_no}</span>
                   <span style={{ padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, ...BADGE[q.status] }}>
                     {BADGE_LABEL[q.status]}
                   </span>
-                  <span style={{ padding:'2px 8px', borderRadius:20, fontSize:11, fontWeight:600, background:'#fef2f2', color:'#dc2626', border:'1px solid #fca5a5' }}>삭제됨</span>
+                  <span style={{ padding:'2px 8px', borderRadius:20, fontSize:11, fontWeight:600, background:'#2a1618', color:'#f87171', border:'1px solid #fca5a5' }}>삭제됨</span>
                 </div>
-                <div style={{ fontSize:13, color:'#374151', marginBottom:3 }}>
+                <div style={{ fontSize:13, color:'#d4d4d8', marginBottom:3 }}>
                   {q.name} ({q.company||'개인'}) &nbsp;·&nbsp; {METHODS[q.method]?.label||q.method} / {q.material} / {q.color} &nbsp;·&nbsp; {q.qty}개 &nbsp;·&nbsp; {krw(q.final_price||q.auto_price)}
                 </div>
-                <div style={{ fontSize:11, color:'#9ca3af' }}>
+                <div style={{ fontSize:11, color:'#8a8a90' }}>
                   접수 {fmtStageTime(q.created_at)} &nbsp;·&nbsp; 삭제 {fmtStageTime(q.deleted_at)} &nbsp;·&nbsp; 파일 제거됨
                 </div>
-                {q.admin_note && <div style={{ fontSize:11, color:'#b45309', marginTop:3 }}>사유: {q.admin_note}</div>}
+                {q.admin_note && <div style={{ fontSize:11, color:'#fbbf24', marginTop:3 }}>사유: {q.admin_note}</div>}
               </div>
             ))}
 
             {searched.length > visibleCount && (
               <button onClick={()=>setVisibleCount(v=>v+30)}
-                style={{ marginTop:6, padding:'10px 0', borderRadius:10, border:'1.5px solid #d1d5db', background:'#fff',
-                  fontSize:13, fontWeight:600, cursor:'pointer', color:'#374151' }}>
+                style={{ marginTop:6, padding:'10px 0', borderRadius:10, border:'1.5px solid #33333a', background:'#232327',
+                  fontSize:13, fontWeight:600, cursor:'pointer', color:'#d4d4d8' }}>
                 더 보기 ({searched.length - visibleCount}건 남음)
               </button>
             )}
@@ -1332,21 +1332,21 @@ export default function AdminPage() {
       {tab === 'settings' && (
         <div>
           {!editSettings ? (
-            <div style={{ textAlign:'center', padding:'60px 0', color:'#9ca3af' }}>설정을 불러오는 중...</div>
+            <div style={{ textAlign:'center', padding:'60px 0', color:'#8a8a90' }}>설정을 불러오는 중...</div>
           ) : (
             <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
                 <div>
                   <h2 style={{ fontSize:18, fontWeight:700, margin:0 }}>출력 방식별 옵션 설정</h2>
-                  <p style={{ fontSize:13, color:'#6b7280', marginTop:4 }}>
+                  <p style={{ fontSize:13, color:'#a1a1aa', marginTop:4 }}>
                     소재별 단가계수·밀도·색상, 품질별 보정값을 직접 추가/삭제합니다.
                   </p>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
                   <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:20,
-                    background: settingsDirty ? '#fef3c7' : '#dcfce7',
+                    background: settingsDirty ? '#2a2412' : '#16241a',
                     color: settingsDirty ? '#92400e' : '#15803d',
-                    border: `1px solid ${settingsDirty ? '#fcd34d' : '#86efac'}` }}>
+                    border: `1px solid ${settingsDirty ? '#5a4a1e' : '#2a5a3a'}` }}>
                     {settingsDirty ? '● 저장되지 않은 변경 있음' : '✓ 모든 변경 저장됨'}
                   </span>
                   <button onClick={saveSettings} disabled={savingSettings || !settingsDirty} style={{
@@ -1358,48 +1358,48 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div style={{ background:'#faf6ea', border:'1px solid #e7d9ad', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:13, color:'#7c5e12' }}>
+              <div style={{ background:'#26241d', border:'1px solid #33333a', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:13, color:'#fbbf24' }}>
                 ℹ저장 즉시 고객 견적 페이지에 반영됩니다. 비활성화된 방식은 고객에게 표시되지 않습니다.
               </div>
 
               {/* 무게 구간별 배송비 */}
-              <div style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:18, marginBottom:12 }}>
+              <div style={{ background:'#232327', border:'1px solid #33333a', borderRadius:12, padding:18, marginBottom:12 }}>
                 <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>배송비 (무게 구간별)</div>
-                <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
+                <p style={{ fontSize:12, color:'#a1a1aa', margin:'0 0 12px' }}>
                   견적 시 산출된 출력물 무게(여러 파일이면 합산)로 아래 구간의 배송비가 자동 적용됩니다. 담당자 견적 등 무게를 알 수 없는 건은 &quot;담당자 확정&quot;으로 비워집니다. 상한이 <b>0</b>인 구간은 그 위 무게 전체(초과)에 적용됩니다.
                 </p>
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {shipTiers.map((t, i) => (
                     <div key={i} style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                      <span style={{ fontSize:12, color:'#6b7280', width:44 }}>{i===0?'~':'초과~'}</span>
+                      <span style={{ fontSize:12, color:'#a1a1aa', width:44 }}>{i===0?'~':'초과~'}</span>
                       <input type="number" step="0.1" min={0} value={t.maxKg}
                         onChange={e => { const v=parseFloat(e.target.value)||0; setShipTiers(prev=>prev.map((x,idx)=>idx===i?{...x,maxKg:v}:x)); setSettingsDirty(true) }}
-                        style={{ width:80, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
-                      <span style={{ fontSize:12, color:'#374151' }}>kg 이하</span>
-                      <span style={{ fontSize:12, color:'#9ca3af' }}>→</span>
+                        style={{ width:80, padding:'8px 10px', border:'1px solid #33333a', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                      <span style={{ fontSize:12, color:'#d4d4d8' }}>kg 이하</span>
+                      <span style={{ fontSize:12, color:'#8a8a90' }}>→</span>
                       <input type="number" step="100" min={0} value={t.fee}
                         onChange={e => { const v=parseInt(e.target.value)||0; setShipTiers(prev=>prev.map((x,idx)=>idx===i?{...x,fee:v}:x)); setSettingsDirty(true) }}
-                        style={{ width:100, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
-                      <span style={{ fontSize:12, color:'#374151' }}>원</span>
+                        style={{ width:100, padding:'8px 10px', border:'1px solid #33333a', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                      <span style={{ fontSize:12, color:'#d4d4d8' }}>원</span>
                       <button onClick={() => { setShipTiers(prev=>prev.filter((_,idx)=>idx!==i)); setSettingsDirty(true) }}
-                        title="구간 삭제" style={{ marginLeft:'auto', width:26, height:26, borderRadius:6, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', fontSize:14 }}>×</button>
+                        title="구간 삭제" style={{ marginLeft:'auto', width:26, height:26, borderRadius:6, border:'1px solid #fecaca', background:'#232327', color:'#f87171', cursor:'pointer', fontSize:14 }}>×</button>
                     </div>
                   ))}
                 </div>
                 <button onClick={() => { setShipTiers(prev=>[...prev, { maxKg:0, fee:0 }]); setSettingsDirty(true) }}
-                  style={{ marginTop:10, padding:'7px 14px', background:'#f3f4f6', border:'1px solid #d1d5db', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                  style={{ marginTop:10, padding:'7px 14px', background:'#1f1f23', border:'1px solid #33333a', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
                   + 구간 추가
                 </button>
-                <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid #e5e7eb' }}>
+                <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid #33333a' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                    <span style={{ fontSize:13, fontWeight:700, color:'#7c5e12' }}>무료배송 기준</span>
-                    <span style={{ fontSize:12, color:'#374151' }}>공급가</span>
+                    <span style={{ fontSize:13, fontWeight:700, color:'#fbbf24' }}>무료배송 기준</span>
+                    <span style={{ fontSize:12, color:'#d4d4d8' }}>공급가</span>
                     <input type="number" step="1000" min={0} value={freeThreshold}
                       onChange={e => { setFreeThreshold(parseInt(e.target.value) || 0); setSettingsDirty(true) }}
-                      style={{ width:120, padding:'8px 10px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
-                    <span style={{ fontSize:12, color:'#374151' }}>원 이상이면 배송비 무료</span>
+                      style={{ width:120, padding:'8px 10px', border:'1px solid #33333a', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                    <span style={{ fontSize:12, color:'#d4d4d8' }}>원 이상이면 배송비 무료</span>
                   </div>
-                  <p style={{ fontSize:11, color:'#6b7280', margin:'8px 0 0' }}>
+                  <p style={{ fontSize:11, color:'#a1a1aa', margin:'8px 0 0' }}>
                     배송비를 제외한 공급가(VAT 별도)가 이 금액 이상이면 배송비가 0원이 됩니다. 0으로 두면 무료배송을 적용하지 않습니다.
                   </p>
                 </div>
@@ -1423,8 +1423,8 @@ export default function AdminPage() {
 
 function Section({ title, children, style }: { title:string; children:React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ background:'#f9fafb', borderRadius:12, padding:18, marginBottom:12, ...style }}>
-      <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:12 }}>{title}</div>
+    <div style={{ background:'#1f1f23', borderRadius:12, padding:18, marginBottom:12, ...style }}>
+      <div style={{ fontSize:11, fontWeight:700, color:'#8a8a90', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:12 }}>{title}</div>
       {children}
     </div>
   )
@@ -1433,7 +1433,7 @@ function Section({ title, children, style }: { title:string; children:React.Reac
 function Info({ label, value, bold }: { label:string; value:string; bold?: boolean }) {
   return (
     <div style={{ marginBottom:8 }}>
-      <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>{label}</div>
+      <div style={{ fontSize:11, color:'#8a8a90', marginBottom:2 }}>{label}</div>
       <div style={{ fontSize:14, fontWeight: bold?700:500 }}>{value}</div>
     </div>
   )
