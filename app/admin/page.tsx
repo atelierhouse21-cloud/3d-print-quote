@@ -193,10 +193,26 @@ function AdminSTLViewer({ path, password }: { path: string; password: string }) 
   )
 }
 
+// 관리자 페이지 전용 밝은 테마.
+// 전체 레이아웃(app/layout.tsx)이 어두운 테마라, 관리자 화면에서만 다시 밝게 되돌립니다.
+// 고객이 보는 화면에는 영향을 주지 않습니다.
+function AdminTheme() {
+  return (
+    <style>{`
+      body { background: #f4f5f7 !important; color: #1a1a1a !important; }
+      body input[type=text], body input[type=email], body input[type=tel],
+      body input[type=number], body input[type=password], body select, body textarea {
+        background: #fff !important; color: #1a1a1a !important; border-color: #d1d5db !important;
+      }
+      body input:focus, body select:focus, body textarea:focus {
+        border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,.1) !important;
+      }
+    `}</style>
+  )
+}
+
 const S: Record<string, React.CSSProperties> = {
-  // 관리자 페이지는 밝은 테마를 씁니다.
-  // 전체 레이아웃(app/layout.tsx)이 어두운 테마라, 여기서 밝은 배경과 글자색을 다시 지정합니다.
-  wrap: { maxWidth:900, margin:'0 auto', padding:'24px 16px 60px', background:'#f9fafb', color:'#111827', minHeight:'100vh' },
+  wrap: { maxWidth:900, margin:'0 auto', padding:'24px 16px 60px' },
   card: { background:'#fff', borderRadius:16, border:'1px solid #e5e7eb' },
   body: { padding:24 },
   btn:  { padding:'9px 20px', borderRadius:9, fontSize:14, fontWeight:600, cursor:'pointer', border:'none', display:'inline-flex', alignItems:'center', gap:6 },
@@ -841,8 +857,8 @@ export default function AdminPage() {
 
   // ── 로그인 화면 ──
   if (!authed) return (
-    <div style={{ background:'#f9fafb', color:'#111827', minHeight:'100vh', padding:'80px 24px 24px' }}>
-    <div style={{ maxWidth:400, margin:'0 auto' }}>
+    <div style={{ maxWidth:400, margin:'80px auto', padding:24 }}>
+      <AdminTheme />
       <div style={{ textAlign:'center', marginBottom:32 }}>
         <h2 style={{ fontSize:20, fontWeight:700 }}>관리자 로그인</h2>
         <p style={{ color:'#6b7280', marginTop:4 }}>3D 프린팅 견적 관리 시스템</p>
@@ -868,12 +884,12 @@ export default function AdminPage() {
         </button>
       </div></div>
     </div>
-    </div>
   )
 
   // ── 상세 화면 ──
   if (sel) return (
     <div style={S.wrap}>
+      <AdminTheme />
       <button style={{ ...S.sBtn, marginBottom:20 }} onClick={()=>{ setSel(null); setShowIssueForm(false) }}>← 목록으로</button>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
         <span style={{ fontSize:18, fontWeight:700 }}>{sel.quote_no}</span>
@@ -1193,6 +1209,7 @@ export default function AdminPage() {
   // ── 목록 화면 ──
   return (
     <div style={S.wrap}>
+      <AdminTheme />
       <div style={{ marginBottom:20 }}>
         <h1 style={{ fontSize:20, fontWeight:700, marginBottom:16 }}>견적 관리 대시보드</h1>
         <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'2px solid #e5e7eb' }}>
