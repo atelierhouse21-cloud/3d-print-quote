@@ -181,6 +181,7 @@ export async function POST(req: NextRequest) {
           manualReview: fl.manualReview === true,
           objectCount: (fl.objectCount !== null && fl.objectCount !== undefined) ? Number(fl.objectCount) : null,
           surfaceArea: (fl.surfaceArea !== null && fl.surfaceArea !== undefined) ? Number(fl.surfaceArea) : null,
+          warnings: Array.isArray(fl.warnings) ? fl.warnings.filter((w:any)=>typeof w==='string').slice(0,10) : [],
           calc: (fl.calc && typeof fl.calc === 'object') ? fl.calc : buildCalc(fl, printOptions),
         }
       })

@@ -80,6 +80,57 @@ function calcBBox(v: Float32Array) {
   return { x:parseFloat((x1-x0).toFixed(1)), y:parseFloat((y1-y0).toFixed(1)), z:parseFloat((z1-z0).toFixed(1)), cx:(x0+x1)/2, cy:(y0+y1)/2, cz:(z0+z1)/2 }
 }
 
+// ── FDM 출력성 사전 점검 ─────────────────────────────────
+// 경고 코드: 'mesh'(메시 이상), 'overhang'(오버행 많음), 'thin'(얇은 벽 가능성), 'tiny'(너무 작음)
+// volume은 cm³, surfaceArea는 cm² 기준. overhang은 삼각형 법선으로 정밀 계산, thin은 형상계수(근사).
+type GeoMetrics = { overhangPct:number; flatDownPct:number; shapeFactor:number; maxDim:number; meshBad:boolean }
+function analyzePrintability(v: Float32Array, bbox: {x:number;y:number;z:number}, volume: number, surfaceArea: number) {
+  const meshBad = !(volume > 0)
+  let totalA = 0, overA = 0, flatDownA = 0
+  for (let i = 0; i < v.length; i += 9) {
+    const ux=v[i+3]-v[i], uy=v[i+4]-v[i+1], uz=v[i+5]-v[i+2]
+    const wx=v[i+6]-v[i], wy=v[i+7]-v[i+1], wz=v[i+8]-v[i+2]
+    const nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx
+    const len = Math.sqrt(nx*nx+ny*ny+nz*nz); if (len === 0) continue
+    const area = len/2; totalA += area
+    const nnz = nz/len
+    if (nnz < -0.707) overA += area       // 수직 기준 45° 초과 하향면(오버행)
+    if (nnz < -0.94)  flatDownA += area    // 거의 수평인 하향면(SLA 흡착·컵핑 위험)
+  }
+  const overhangPct = totalA>0 ? Math.round(overA/totalA*100) : 0
+  const flatDownPct = totalA>0 ? Math.round(flatDownA/totalA*100) : 0
+  const aSphereEq = volume>0 ? Math.cbrt(36*Math.PI*volume*volume) : 0
+  const shapeFactor = aSphereEq>0 ? parseFloat((surfaceArea/aSphereEq).toFixed(2)) : 0
+  const maxDim = Math.max(bbox.x, bbox.y, bbox.z)
+  const geo: GeoMetrics = { overhangPct, flatDownPct, shapeFactor, maxDim, meshBad }
+  return { geo }
+}
+
+// 방식별 경고 코드 산출(형상 지표 + 선택 방식)
+function printWarnings(method: string, geo: GeoMetrics | null): string[] {
+  if (!geo) return []
+  const w: string[] = []
+  if (geo.meshBad) w.push('mesh')
+  if (geo.shapeFactor > 3.2) w.push('thin')
+  if (geo.maxDim < 3) w.push('tiny')
+  if ((method === 'FDM' || method === 'SLA') && geo.overhangPct > 15) w.push('overhang')
+  if (method === 'SLA') {
+    if (geo.flatDownPct > 10) w.push('suction')
+    w.push('drain')   // 할로우/밀폐공동 대비 상시 안내
+  }
+  return w
+}
+
+// 경고 코드 → 고객 안내 문구
+const PRINT_WARNING_LABELS: Record<string,string> = {
+  mesh: '파일(메시)에 열린 구멍이나 뒤집힌 면이 있을 수 있어 출력에 문제가 될 수 있습니다.',
+  overhang: '경사가 큰 면(오버행)이 많아 서포트가 많이 필요하거나 아랫면 품질이 떨어질 수 있습니다.',
+  thin: '벽이 얇거나 가는 형상이 있을 수 있어 부러지거나 출력이 어려울 수 있습니다.',
+  tiny: '크기가 매우 작아 세부 형상이 뭉개질 수 있습니다.',
+  suction: '아래를 향한 넓은 평면이 있어 출력 중 흡착(석션)으로 실패할 수 있습니다. 기울여 출력하거나 형상 조정이 필요할 수 있습니다.',
+  drain: '속을 비운(할로우) 모델이라면, 갇힌 수지가 빠지도록 배수구멍(드레인홀)이 필요할 수 있습니다.',
+}
+
 // 같은 평면/매끈한 곡면이 한 덩어리처럼 보이도록, 정점별 평균 법선(스무스 셰이딩) 계산
 // 표시(미리보기)용으로 삼각형 수를 줄임 — 견적 계산(부피/크기/개체수)은 원본을 그대로 사용
 function decimateForRender(v: Float32Array, maxTris: number): Float32Array {
@@ -135,7 +186,7 @@ function countObjects(v: Float32Array): number {
 }
 
 // ── STL 뷰어 ──────────────────────────────────────────
-type STLInfo = { x:number; y:number; z:number; volume:number; surfaceArea:number; objectCount:number|null }
+type STLInfo = { x:number; y:number; z:number; volume:number; surfaceArea:number; objectCount:number|null; geo:GeoMetrics }
 function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const [info, setInfo] = useState<STLInfo|null>(null)
@@ -167,7 +218,8 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const triCount = verts.length / 9
         let objectCount: number | null = null
         if (triCount > 0 && triCount <= 800000) objectCount = countObjects(verts)
-        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, surfaceArea, objectCount }
+        const { geo } = analyzePrintability(verts, bbox, volume, surfaceArea)
+        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, surfaceArea, objectCount, geo }
         setInfo(si); onAnalyzed(si)
 
         const mount = mountRef.current
@@ -282,7 +334,7 @@ type FileItem = {
   id:string; file:File
   vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null; manualReview:boolean
   method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number; infill:number; surfaceArea:number|null
-  qty:number; note:string
+  qty:number; note:string; geo:GeoMetrics|null
 }
 type CustomerForm = { name:string; email:string; company:string; phone:string; address:string; addressDetail:string }
 
@@ -397,7 +449,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
     quality:  quals[0]?.name || '',
     factor:   quals[0]?.factor || 1.0,
     infill:   quals[0]?.infill ?? 100,
-    qty: 1, note: '',
+    qty: 1, note: '', geo: null,
   }
 }
 
@@ -487,6 +539,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               onChange(item.id,'surfaceArea',info.surfaceArea as any)
               onChange(item.id,'sizeX',info.x); onChange(item.id,'sizeY',info.y); onChange(item.id,'sizeZ',info.z)
               onChange(item.id,'objectCount',info.objectCount as any)
+              onChange(item.id,'geo',info.geo as any)
             }}/>
           </div>
         )}
@@ -564,6 +617,17 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               개체가 1개가 아닙니다. (이 파일에서 {item.objectCount}개의 개체가 감지되었습니다.)
             </div>
           )}
+          {(() => { const warns = printWarnings(item.method, item.geo); return warns.length > 0 && (
+            <div style={{marginBottom:8,padding:'10px 12px',background:'#2a2412',border:'1px solid #5a4a1e',borderRadius:8}}>
+              <div style={{fontSize:12,color:'#fbbf24',fontWeight:700,marginBottom:6}}>출력 전 확인이 필요한 사항</div>
+              <ul style={{margin:0,paddingLeft:16}}>
+                {warns.map((w,wi)=>(
+                  <li key={wi} style={{fontSize:11.5,color:'#e8d9a8',lineHeight:1.55,marginBottom:2}}>{PRINT_WARNING_LABELS[w] || w}</li>
+                ))}
+              </ul>
+              <div style={{fontSize:11,color:'#a1a1aa',marginTop:6}}>접수는 정상 진행되며, 담당자가 형상을 확인해 필요 시 안내드립니다.</div>
+            </div>
+          )})()}
 
           {needsManual ? (
             /* 자동 견적 불가 → 담당자 견적 요청 */
@@ -757,6 +821,7 @@ export default function Home() {
           manualReview: manual,
           objectCount: it.objectCount,
           surfaceArea: it.surfaceArea,
+          warnings: printWarnings(it.method, it.geo),
           calc: (manual || !it.vol) ? null : calcDetail(it, options),
         }
       })
