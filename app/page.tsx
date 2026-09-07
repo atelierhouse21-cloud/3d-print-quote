@@ -83,37 +83,71 @@ function calcBBox(v: Float32Array) {
 // ── FDM 출력성 사전 점검 ─────────────────────────────────
 // 경고 코드: 'mesh'(메시 이상), 'overhang'(오버행 많음), 'thin'(얇은 벽 가능성), 'tiny'(너무 작음)
 // volume은 cm³, surfaceArea는 cm² 기준. overhang은 삼각형 법선으로 정밀 계산, thin은 형상계수(근사).
-type GeoMetrics = { overhangPct:number; flatDownPct:number; shapeFactor:number; maxDim:number; meshBad:boolean }
+type OriRec = { fdmLabel:string; fdmOver:number; slaLabel:string; slaOver:number; slaFlat:number }
+type GeoMetrics = { overhangPct:number; flatDownPct:number; shapeFactor:number; maxDim:number; meshBad:boolean; ori:OriRec|null }
+
+// 후보 배치(빌드 방향=up 벡터). 정육면체 6면 + 45° 기울임 4종.
+const ORIENTATIONS: { up:[number,number,number]; label:string }[] = [
+  { up:[0,0,1],  label:'기본(Z가 높이)' },
+  { up:[0,0,-1], label:'Z 뒤집기' },
+  { up:[1,0,0],  label:'X를 세로로' },
+  { up:[-1,0,0], label:'X를 세로로(반대)' },
+  { up:[0,1,0],  label:'Y를 세로로' },
+  { up:[0,-1,0], label:'Y를 세로로(반대)' },
+  { up:[0.707,0,0.707],  label:'45° 기울임(X+)' },
+  { up:[-0.707,0,0.707], label:'45° 기울임(X-)' },
+  { up:[0,0.707,0.707],  label:'45° 기울임(Y+)' },
+  { up:[0,-0.707,0.707], label:'45° 기울임(Y-)' },
+]
+
 function analyzePrintability(v: Float32Array, bbox: {x:number;y:number;z:number}, volume: number, surfaceArea: number) {
   const meshBad = !(volume > 0)
-  let totalA = 0, overA = 0, flatDownA = 0
+  const K = ORIENTATIONS.length      // 0~5: 6면(눕힘), 6~9: 45° 기울임
+  const AXIS = 6
+  let totalA = 0
+  const angOver = new Array(K).fill(0)  // 경사진 하향면(진짜 오버행): -0.94 < n·up < -0.707
+  const flatDn  = new Array(K).fill(0)  // 큰 평평한 하향면: n·up < -0.94 (바닥/천장)
   for (let i = 0; i < v.length; i += 9) {
     const ux=v[i+3]-v[i], uy=v[i+4]-v[i+1], uz=v[i+5]-v[i+2]
     const wx=v[i+6]-v[i], wy=v[i+7]-v[i+1], wz=v[i+8]-v[i+2]
     const nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx
     const len = Math.sqrt(nx*nx+ny*ny+nz*nz); if (len === 0) continue
     const area = len/2; totalA += area
-    const nnz = nz/len
-    if (nnz < -0.707) overA += area       // 수직 기준 45° 초과 하향면(오버행)
-    if (nnz < -0.94)  flatDownA += area    // 거의 수평인 하향면(SLA 흡착·컵핑 위험)
+    const nX=nx/len, nY=ny/len, nZ=nz/len
+    for (let k=0;k<K;k++){
+      const u=ORIENTATIONS[k].up
+      const d = nX*u[0]+nY*u[1]+nZ*u[2]
+      if (d < -0.707 && d >= -0.94) angOver[k] += area   // 서포트 필요한 경사 오버행
+      if (d < -0.94)                flatDn[k]  += area   // 평평한 하향(바닥에 놓이거나 천장)
+    }
   }
-  const overhangPct = totalA>0 ? Math.round(overA/totalA*100) : 0
-  const flatDownPct = totalA>0 ? Math.round(flatDownA/totalA*100) : 0
+  const angPct  = angOver.map(a => totalA>0 ? Math.round(a/totalA*100) : 0)
+  const flatPct = flatDn.map(a => totalA>0 ? Math.round(a/totalA*100) : 0)
+  // 경고: 눕힘(6면) 배치 중 최선값 → 어떻게 세워도 남는 문제만 경고(바닥면 오탐 제거)
+  let overhangPct = 100; for (let k=0;k<AXIS;k++) if (angPct[k] < overhangPct) overhangPct = angPct[k]
+  let flatDownPct = 100; for (let k=0;k<AXIS;k++) if (flatPct[k] < flatDownPct) flatDownPct = flatPct[k]
+  // 관리자 권장 배치
+  let fdmK = 0; for (let k=1;k<AXIS;k++) if (angPct[k] < angPct[fdmK]) fdmK = k     // FDM: 눕힘 중 오버행 최소
+  let slaK = 0; for (let k=1;k<K;k++){ if (flatPct[k] < flatPct[slaK] || (flatPct[k]===flatPct[slaK] && angPct[k]<angPct[slaK])) slaK = k } // SLA: 기울임 포함, 큰 하향면 최소
+  const ori: OriRec = {
+    fdmLabel: ORIENTATIONS[fdmK].label, fdmOver: angPct[fdmK],
+    slaLabel: ORIENTATIONS[slaK].label, slaOver: angPct[slaK], slaFlat: flatPct[slaK],
+  }
   const aSphereEq = volume>0 ? Math.cbrt(36*Math.PI*volume*volume) : 0
   const shapeFactor = aSphereEq>0 ? parseFloat((surfaceArea/aSphereEq).toFixed(2)) : 0
   const maxDim = Math.max(bbox.x, bbox.y, bbox.z)
-  const geo: GeoMetrics = { overhangPct, flatDownPct, shapeFactor, maxDim, meshBad }
+  const geo: GeoMetrics = { overhangPct, flatDownPct, shapeFactor, maxDim, meshBad, ori }
   return { geo }
 }
 
-// 방식별 경고 코드 산출(형상 지표 + 선택 방식)
+// 방식별 경고 코드 산출(형상 지표 + 선택 방식). 오버행·흡착은 최선 배치 기준.
 function printWarnings(method: string, geo: GeoMetrics | null): string[] {
   if (!geo) return []
   const w: string[] = []
   if (geo.meshBad) w.push('mesh')
   if (geo.shapeFactor > 3.2) w.push('thin')
   if (geo.maxDim < 3) w.push('tiny')
-  if ((method === 'FDM' || method === 'SLA') && geo.overhangPct > 15) w.push('overhang')
+  if ((method === 'FDM' || method === 'SLA') && geo.overhangPct > 10) w.push('overhang')
   if (method === 'SLA') {
     if (geo.flatDownPct > 10) w.push('suction')
     w.push('drain')   // 할로우/밀폐공동 대비 상시 안내
@@ -822,6 +856,7 @@ export default function Home() {
           objectCount: it.objectCount,
           surfaceArea: it.surfaceArea,
           warnings: printWarnings(it.method, it.geo),
+          orient: it.geo?.ori || null,
           calc: (manual || !it.vol) ? null : calcDetail(it, options),
         }
       })

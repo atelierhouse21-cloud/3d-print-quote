@@ -1066,6 +1066,17 @@ export default function AdminPage() {
                       </div>
                     </div>
                   )}
+                  {fl.orient && (
+                    <div style={{ marginTop:8, padding:'8px 12px', background:'#1f2733', border:'1px solid #2f3f52', borderRadius:8 }}>
+                      <div style={{ fontSize:11, color:'#7fb0e6', fontWeight:700, marginBottom:4 }}>권장 배치 (참고)</div>
+                      <div style={{ fontSize:11.5, color:'#c7d6e6', lineHeight:1.5 }}>
+                        {(fl.method === 'SLA')
+                          ? <>SLA: <b>{fl.orient.slaLabel}</b> — 큰 하향면 {fl.orient.slaFlat}% · 오버행 {fl.orient.slaOver}%</>
+                          : <>FDM: <b>{fl.orient.fdmLabel}</b> — 예상 오버행 {fl.orient.fdmOver}%</>}
+                      </div>
+                      <div style={{ fontSize:10.5, color:'#8a8a90', marginTop:3 }}>후보 배치 비교 기반 근사 추정치입니다. 최종 배치는 슬라이서에서 확인하세요.</div>
+                    </div>
+                  )}
                   {fl.file_path && <AdminSTLViewer path={fl.file_path} password={password} />}
                   {(fl.calc || (fl.price != null && !fl.manualReview)) && <CalcDetail fl={fl} />}
                 </div>
