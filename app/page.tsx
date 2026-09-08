@@ -268,7 +268,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const radius = geometry.boundingSphere?.radius || 1
 
         const scene = new THREE.Scene()
-        scene.background = new THREE.Color(0x232327)
+        scene.background = new THREE.Color(0xe8eaed)
 
         const camera = new THREE.PerspectiveCamera(35, W/H, radius*0.01, radius*100)
         const dist = radius / Math.sin((35 * Math.PI/180)/2) * 1.25
@@ -452,14 +452,21 @@ function calcDetail(it: FileItem, options: PrintOptions): any {
 }
 
 // 자동 견적이 어려워 담당자 수동 견적이 필요한 파일인지 판정 (다중 개체 또는 최대 출력 사이즈 초과)
+// 출력 영역 초과 판정 — 모델 세 변과 출력영역 세 변을 각각 크기순 정렬해 비교(90도 회전 허용).
+// max가 0인 축은 제한 없음으로 처리. 세 축 모두 제한 없으면 초과 아님.
+function overBuildSize(sx:number|null, sy:number|null, sz:number|null, m:{maxX:number;maxY:number;maxZ:number}): boolean {
+  if (sx == null || sy == null || sz == null) return false
+  const caps = [m.maxX>0?m.maxX:Infinity, m.maxY>0?m.maxY:Infinity, m.maxZ>0?m.maxZ:Infinity]
+  if (caps.every(c => c === Infinity)) return false
+  const dims = [sx, sy, sz].sort((a,b)=>b-a)
+  caps.sort((a,b)=>b-a)
+  return dims[0] > caps[0] || dims[1] > caps[1] || dims[2] > caps[2]
+}
+
 function itemNeedsManual(it: FileItem, options: PrintOptions): boolean {
   if (it.objectCount != null && it.objectCount > 1) return true
   const m = getMaterials(options, it.method).find(x => x.name === it.material)
-  if (m) {
-    if (m.maxX > 0 && it.sizeX != null && it.sizeX > m.maxX) return true
-    if (m.maxY > 0 && it.sizeY != null && it.sizeY > m.maxY) return true
-    if (m.maxZ > 0 && it.sizeZ != null && it.sizeZ > m.maxZ) return true
-  }
+  if (m && overBuildSize(it.sizeX, it.sizeY, it.sizeZ, m)) return true
   return false
 }
 
@@ -543,13 +550,10 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
   const price = linePrice(item, options)
 
-  // 선택 소재의 최대 출력 사이즈 + 초과 여부
+  // 선택 소재의 최대 출력 사이즈 + 초과 여부(90도 회전 허용, 정렬 비교)
   const matCfg = materials.find(m => m.name === item.material)
   const hasMax = !!matCfg && (matCfg.maxX > 0 || matCfg.maxY > 0 || matCfg.maxZ > 0)
-  const overX = !!matCfg && matCfg.maxX > 0 && item.sizeX != null && item.sizeX > matCfg.maxX
-  const overY = !!matCfg && matCfg.maxY > 0 && item.sizeY != null && item.sizeY > matCfg.maxY
-  const overZ = !!matCfg && matCfg.maxZ > 0 && item.sizeZ != null && item.sizeZ > matCfg.maxZ
-  const overSize = overX || overY || overZ
+  const overSize = !!matCfg && overBuildSize(item.sizeX, item.sizeY, item.sizeZ, matCfg)
   const multiObject = item.objectCount != null && item.objectCount > 1
   const needsManual = multiObject || overSize   // 자동 견적 불가 → 담당자 견적 요청 대상
 
@@ -643,7 +647,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
           {/* 경고 (담당자 견적 필요 사유) */}
           {overSize && (
             <div style={{marginBottom:8,padding:'8px 12px',background:'#2a1618',border:'1px solid #fca5a5',borderRadius:8,fontSize:12,color:'#f87171',fontWeight:600}}>
-              출력 가능 사이즈를 초과합니다. (초과: {[overX?'X':'',overY?'Y':'',overZ?'Z':''].filter(Boolean).join('·')}축)
+              출력 가능 사이즈를 초과합니다. (방향을 바꿔도 출력 영역에 들어가지 않습니다)
             </div>
           )}
           {multiObject && (
