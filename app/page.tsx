@@ -134,8 +134,79 @@ function countObjects(v: Float32Array): number {
   return roots.size
 }
 
+// 메시(형상) 이상 감지: 구멍(비어있는 경계) · 뒤집힌 면(비정상 위상)
+// 정상적으로 닫힌(watertight) 메시는 모든 변(edge)이 반대 방향으로 정확히 한 쌍씩만 존재한다.
+// - 어떤 변의 반대 방향 짝이 없으면 → 구멍(경계)
+// - 같은 방향으로 같은 변이 두 번 이상 나오면 → 뒤집힌 면 / 비정상 위상
+// 완전한 형상 검증기는 아니며, 참고용 휴리스틱이다.
+function detectMeshIntegrityIssue(v: Float32Array): boolean {
+  const key = (i: number) => `${Math.round(v[i]*1000)},${Math.round(v[i+1]*1000)},${Math.round(v[i+2]*1000)}`
+  const idOf = new Map<string, number>(); let next = 0
+  const getId = (i: number) => { const k = key(i); let x = idOf.get(k); if (x === undefined) { x = next++; idOf.set(k, x) } return x }
+  const dirCount = new Map<string, number>()
+  for (let i = 0; i < v.length; i += 9) {
+    const a = getId(i), b = getId(i+3), c = getId(i+6)
+    for (const [p, q] of [[a,b],[b,c],[c,a]] as [number, number][]) {
+      const k = `${p}>${q}`
+      dirCount.set(k, (dirCount.get(k) || 0) + 1)
+    }
+  }
+  let anomalies = 0
+  dirCount.forEach((cnt, k) => {
+    if (cnt > 1) { anomalies += cnt - 1; return }
+    const parts = k.split('>')
+    if (!dirCount.has(`${parts[1]}>${parts[0]}`)) anomalies++
+  })
+  // 삼각형 1개 분량(변 3개)의 결함부터 감지. 부동소수점 스냅 경계에서 생기는 1~2개의 미세 오차는 무시.
+  return anomalies > 2
+}
+
+// 얇은 벽 가능성 감지: 표본 삼각형 표면에서 안쪽으로 광선을 쏴 반대쪽 벽까지의 거리를 측정.
+// 대부분의 FDM/SLA 출력에서 문제가 되는 최소 두께(mm) 미만 지점이 여러 곳이면 "가능성"으로 표시.
+// 정밀 CAD 수준의 벽 두께 분석이 아닌 근사 휴리스틱이다.
+function detectThinWalls(geometry: any, v: Float32Array, minWallMM = 1.2): boolean {
+  try {
+    const triCount = v.length / 9
+    if (triCount === 0) return false
+    const sampleCount = Math.min(24, triCount)
+    const stride = Math.max(1, Math.floor(triCount / sampleCount))
+    const raycaster = new THREE.Raycaster()
+    raycaster.far = Math.max(minWallMM * 5, 20)
+    // DoubleSide 필수: 벽 안쪽에서 반대쪽 면의 뒷면을 향해 광선을 쏘기 때문에, 앞면만 감지하는 기본값으로는 항상 놓친다.
+    const probe = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }))
+    let thinHits = 0, sampled = 0
+    for (let t = 0; t < triCount && sampled < sampleCount; t += stride, sampled++) {
+      const i = t * 9
+      const ax=v[i],ay=v[i+1],az=v[i+2], bx=v[i+3],by=v[i+4],bz=v[i+5], cx=v[i+6],cy=v[i+7],cz=v[i+8]
+      const cxm=(ax+bx+cx)/3, cym=(ay+by+cy)/3, czm=(az+bz+cz)/3
+      const ux=bx-ax, uy=by-ay, uz=bz-az, wx=cx-ax, wy=cy-ay, wz=cz-az
+      let nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx
+      const len = Math.sqrt(nx*nx+ny*ny+nz*nz) || 1
+      nx/=len; ny/=len; nz/=len
+      const eps = 0.01
+      raycaster.set(
+        new THREE.Vector3(cxm - nx*eps, cym - ny*eps, czm - nz*eps),
+        new THREE.Vector3(-nx, -ny, -nz)
+      )
+      const hits = raycaster.intersectObject(probe, false)
+      if (hits.length > 0 && hits[0].distance < minWallMM) thinHits++
+    }
+    return thinHits >= 2
+  } catch { return false }
+}
+
+// 위 두 검사를 종합해 경고 코드 배열로 반환 ('mesh' | 'thin'). 대용량 메시는 성능을 위해 건너뜀.
+function computeMeshWarnings(v: Float32Array, geometry: any): string[] {
+  const triCount = v.length / 9
+  if (triCount === 0 || triCount > 800000) return []
+  const warnings: string[] = []
+  try { if (detectMeshIntegrityIssue(v)) warnings.push('mesh') } catch {}
+  if (detectThinWalls(geometry, v)) warnings.push('thin')
+  return warnings
+}
+
 // ── STL 뷰어 ──────────────────────────────────────────
-type STLInfo = { x:number; y:number; z:number; volume:number; surfaceArea:number; objectCount:number|null }
+type STLInfo = { x:number; y:number; z:number; volume:number; surfaceArea:number; objectCount:number|null; warnings:string[] }
 function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const [info, setInfo] = useState<STLInfo|null>(null)
@@ -167,7 +238,8 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const triCount = verts.length / 9
         let objectCount: number | null = null
         if (triCount > 0 && triCount <= 800000) objectCount = countObjects(verts)
-        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, surfaceArea, objectCount }
+        const warnings = computeMeshWarnings(verts, geometry)
+        const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, surfaceArea, objectCount, warnings }
         setInfo(si); onAnalyzed(si)
 
         const mount = mountRef.current
@@ -282,7 +354,7 @@ type FileItem = {
   id:string; file:File
   vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null; manualReview:boolean
   method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number; infill:number; surfaceArea:number|null
-  qty:number; note:string
+  qty:number; note:string; warnings:string[]
 }
 type CustomerForm = { name:string; email:string; company:string; phone:string; address:string; addressDetail:string }
 
@@ -377,6 +449,12 @@ function itemNeedsManual(it: FileItem, options: PrintOptions): boolean {
   return false
 }
 
+// 위 사유(다중 개체·크기 초과) 또는 고객이 요청사항을 입력한 경우까지 포함해 "담당자 견적" 표시가 필요한지 판정.
+// itemNeedsManual과 달리 다음 단계 진행을 막지 않는다 — 요청사항 입력은 안내만 하고 자동으로 진행 가능.
+function itemIsManualQuote(it: FileItem, options: PrintOptions): boolean {
+  return itemNeedsManual(it, options) || it.note.trim() !== ''
+}
+
 // ── FileItem 초기값 (설정 기반) ───────────────────────
 function newFileItem(file: File, options: PrintOptions): FileItem {
   const enabledMethods = getEnabledMethods(options)
@@ -397,7 +475,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
     quality:  quals[0]?.name || '',
     factor:   quals[0]?.factor || 1.0,
     infill:   quals[0]?.infill ?? 100,
-    qty: 1, note: '',
+    qty: 1, note: '', warnings: [],
   }
 }
 
@@ -466,6 +544,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   const overSize = overX || overY || overZ
   const multiObject = item.objectCount != null && item.objectCount > 1
   const needsManual = multiObject || overSize   // 자동 견적 불가 → 담당자 견적 요청 대상
+  const noteManual = item.note.trim() !== ''    // 요청사항 입력 → 담당자 견적으로 전환(진행은 막지 않음)
 
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
@@ -487,6 +566,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               onChange(item.id,'surfaceArea',info.surfaceArea as any)
               onChange(item.id,'sizeX',info.x); onChange(item.id,'sizeY',info.y); onChange(item.id,'sizeZ',info.z)
               onChange(item.id,'objectCount',info.objectCount as any)
+              onChange(item.id,'warnings',info.warnings as any)
             }}/>
           </div>
         )}
@@ -549,7 +629,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
           <div style={{...S.grp,marginBottom:10}}>
             <label style={S.lbl}>요청 사항</label>
             <textarea value={item.note} onChange={e=>onChange(item.id,'note',e.target.value)}
-              placeholder="납기 요청, 특이사항 등을 입력하세요"
+              placeholder="납기요청, 특이사항 등이 있을경우 입력하세요. 요청사항이 입력되면 자동 견적에서 담당자 견적으로 변경됩니다."
               style={{...S.inp,fontSize:12,minHeight:54,resize:'vertical'}}/>
           </div>
 
@@ -584,10 +664,15 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
             </div>
           ) : (
             <>
+              {noteManual && (
+                <div style={{marginBottom:8,padding:'8px 12px',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,fontSize:12,color:'#1e40af',fontWeight:600,lineHeight:1.6}}>
+                  요청사항이 입력되어 자동 견적 대신 담당자 견적으로 진행됩니다. (다음 단계 진행은 그대로 가능합니다)
+                </div>
+              )}
               {/* 예상 금액 */}
-              <div style={{background:'#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{background: noteManual ? '#eff6ff' : '#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <span style={{fontSize:11,color:'#6b7280'}}>예상 금액 (VAT 별도)</span>
-                <span style={{fontSize:15,fontWeight:800,color:'#15803d'}}>{item.vol?krw(price):'담당자 산출'}</span>
+                <span style={{fontSize:15,fontWeight:800,color: noteManual ? '#2563eb' : '#15803d'}}>{noteManual ? '담당자 견적' : (item.vol?krw(price):'담당자 산출')}</span>
               </div>
               {item.minPrice > 0 && (
                 <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>
@@ -700,10 +785,10 @@ export default function Home() {
   }
   const removeItem = (id: string) => setItems(p => p.filter(it => it.id !== id))
 
-  const totalPrice = items.reduce((sum,it)=> sum + (itemNeedsManual(it, options) ? 0 : linePrice(it, options)), 0)
+  const totalPrice = items.reduce((sum,it)=> sum + (itemIsManualQuote(it, options) ? 0 : linePrice(it, options)), 0)
   // 배송비: 자동 산출 파일들의 추정 무게 합으로 구간 적용. 담당자 견적 등 무게 미상이 있으면 배송비는 담당자 확정.
-  const hasManualItem = items.some(it => itemNeedsManual(it, options) || !it.vol)
-  const totalWeightKg = items.reduce((s,it)=> s + (itemNeedsManual(it, options) ? 0 : itemMassG(it, options)), 0) / 1000
+  const hasManualItem = items.some(it => itemIsManualQuote(it, options) || !it.vol)
+  const totalWeightKg = items.reduce((s,it)=> s + (itemIsManualQuote(it, options) ? 0 : itemMassG(it, options)), 0) / 1000
   const shipUnknown = items.length > 0 && hasManualItem
   const freeShip = !shipUnknown && freeThreshold > 0 && totalPrice >= freeThreshold
   const shipFee = shipUnknown ? null : (freeShip ? 0 : shippingForWeight(totalWeightKg, shipTiers))
@@ -746,7 +831,7 @@ export default function Home() {
 
       // 모든 파일 정보 전송
       const filesPayload = items.map(it => {
-        const manual = itemNeedsManual(it, options)
+        const manual = itemIsManualQuote(it, options)
         return {
           fileName: it.file.name,
           method: it.method, material: it.material, color: it.color, quality: it.quality,
@@ -757,6 +842,7 @@ export default function Home() {
           manualReview: manual,
           objectCount: it.objectCount,
           surfaceArea: it.surfaceArea,
+          warnings: it.warnings || [],
           calc: (manual || !it.vol) ? null : calcDetail(it, options),
         }
       })
@@ -1042,7 +1128,7 @@ export default function Home() {
                     <span style={{background:'#2563eb',color:'#fff',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>{idx+1}</span>
                     <span style={{fontWeight:600,fontSize:13}}>{item.file.name}</span>
                   </div>
-                  <span style={{fontSize:15,fontWeight:800,color: itemNeedsManual(item,options)?'#2563eb':'#15803d'}}>{itemNeedsManual(item,options) ? '담당자 견적' : (item.vol?krw(linePrice(item, options)):'담당자 산출')}</span>
+                  <span style={{fontSize:15,fontWeight:800,color: itemIsManualQuote(item,options)?'#2563eb':'#15803d'}}>{itemIsManualQuote(item,options) ? '담당자 견적' : (item.vol?krw(linePrice(item, options)):'담당자 산출')}</span>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:6}}>
                   {[['방식',METHODS[item.method]?.label||item.method],['소재',item.material],['색상',item.color],['수량',item.qty+'개'],
@@ -1075,7 +1161,7 @@ export default function Home() {
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <span style={{fontWeight:700,fontSize:14}}>합계 (VAT·배송비 포함)</span>
-                  <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{shipUnknown ? '담당자 확정' : krw(b.total)}</span>
+                  <span style={{fontSize:20,fontWeight:800,color:'#2563eb'}}>{shipUnknown ? '담당자 확인 필요' : krw(b.total)}</span>
                 </div>
                 <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>{shipUnknown ? '무게 확정 후 배송비가 산정됩니다' : (freeShip ? `공급가 ${krw(freeThreshold)} 이상으로 배송비가 무료입니다` : '무게 구간에 따라 배송비가 산정됩니다')}</div>
                 {freeThreshold > 0 && !freeShip && (

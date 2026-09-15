@@ -1062,7 +1062,7 @@ export default function AdminPage() {
                     <div style={{ marginTop:8, padding:'8px 12px', background:'#2a2412', border:'1px solid #5a4a1e', borderRadius:8 }}>
                       <div style={{ fontSize:11, color:'#fbbf24', fontWeight:700, marginBottom:4 }}>출력성 경고</div>
                       <div style={{ fontSize:11.5, color:'#e8d9a8', lineHeight:1.5 }}>
-                        {fl.warnings.map((w:string)=>({mesh:'메시 이상(구멍·뒤집힌 면)',overhang:'오버행 많음(서포트 다수)',thin:'얇은 벽 가능성',tiny:'크기 매우 작음',suction:'흡착 위험(큰 하향 평면)',drain:'드레인홀 확인(할로우 시)'} as any)[w] || w).join(' · ')}
+                        {fl.warnings.map((w:string)=>({mesh:'메시 이상(구멍·뒤집힌 면)',thin:'얇은 벽 가능성'} as any)[w] || w).join(' · ')}
                       </div>
                     </div>
                   )}
