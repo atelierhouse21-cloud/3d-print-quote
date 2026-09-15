@@ -134,10 +134,20 @@ function countObjects(v: Float32Array): number {
   return roots.size
 }
 
-// 메시(형상) 이상 감지: 구멍(비어있는 경계) · 뒤집힌 면(비정상 위상)
+// 부호 있는 부피(발산정리) — 절대값 처리 전. 메시 전체 방향(윈딩) 판정에 사용.
+function signedVolumeMm3(v: Float32Array): number {
+  let vol = 0
+  for (let i = 0; i < v.length; i += 9)
+    vol += (v[i]*(v[i+4]*v[i+8]-v[i+7]*v[i+5]) - v[i+1]*(v[i+3]*v[i+8]-v[i+6]*v[i+5]) + v[i+2]*(v[i+3]*v[i+7]-v[i+6]*v[i+4])) / 6
+  return vol
+}
+
+// 메시(형상) 이상 감지: 구멍(비어있는 경계) · 뒤집힌 면(비정상 위상 또는 전체 반전)
 // 정상적으로 닫힌(watertight) 메시는 모든 변(edge)이 반대 방향으로 정확히 한 쌍씩만 존재한다.
 // - 어떤 변의 반대 방향 짝이 없으면 → 구멍(경계)
-// - 같은 방향으로 같은 변이 두 번 이상 나오면 → 뒤집힌 면 / 비정상 위상
+// - 같은 방향으로 같은 변이 두 번 이상 나오면 → 국소적으로 뒤집힌 면 / 비정상 위상
+// - 위 국소 검사를 모두 통과해도(위상은 멀쩡해도), 부호 있는 부피가 음수면 메시 전체가 뒤집힌 것
+//   (일부 익스포터·미러링에서 발생) → 이것도 "뒤집힌 면"으로 판정
 // 완전한 형상 검증기는 아니며, 참고용 휴리스틱이다.
 function detectMeshIntegrityIssue(v: Float32Array): boolean {
   const key = (i: number) => `${Math.round(v[i]*1000)},${Math.round(v[i+1]*1000)},${Math.round(v[i+2]*1000)}`
@@ -158,7 +168,11 @@ function detectMeshIntegrityIssue(v: Float32Array): boolean {
     if (!dirCount.has(`${parts[1]}>${parts[0]}`)) anomalies++
   })
   // 삼각형 1개 분량(변 3개)의 결함부터 감지. 부동소수점 스냅 경계에서 생기는 1~2개의 미세 오차는 무시.
-  return anomalies > 2
+  if (anomalies > 2) return true
+  // 전역 반전 검사: 부피가 의미 있는 크기인데 부호가 음수면(=전체 노멀이 안쪽을 향함) 이상으로 판정
+  const vol = signedVolumeMm3(v)
+  if (Math.abs(vol) > 1 && vol < 0) return true
+  return false
 }
 
 // 얇은 벽 가능성 감지: 표본 삼각형 표면에서 안쪽으로 광선을 쏴 반대쪽 벽까지의 거리를 측정.
