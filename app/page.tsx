@@ -3,8 +3,8 @@ import { useState, useRef, useEffect } from 'react'
   import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE, shippingForWeight, normalizeShippingTiers, freeShipThreshold } from '@/lib/constants'
-import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
+import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE, shippingForWeight, normalizeShippingTiers, freeShipThreshold, DEFAULT_MESH_CHECK, normalizeMeshCheck } from '@/lib/constants'
+import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier, MeshCheckCfg } from '@/lib/constants'
 import { parseStepToTriangleSoup } from '@/lib/occt'
 
 // 업로드 허용 3D 모델 확장자 — STL(메시) + STEP/STP(CAD 솔리드, occt-import-js로 삼각형화)
@@ -155,16 +155,8 @@ function signedVolumeMm3(v: Float32Array): number {
 // 앞/뒷면을 다른 색으로 렌더링해서 "전체가 뒤집혔다"는 것 자체를 보여준다.
 type MeshIssue = { hasIssue: boolean; badTriangles: number[]; globallyInverted: boolean }
 
-// 정점 병합 오차 범위(mm) — 좌표 차이가 이 값 이내면 "같은 점"으로 취급해 변을 짝짓는다.
-// 값을 낮추면 더 엄격해져 정상 파일도 오탐될 수 있고, 값을 높이면 더 관대해져 실제 결함도
-// 놓칠 수 있다. 슬라이서들이 보통 쓰는 병합 오차(0.01mm대)에 맞춘 값 — 예전 0.001mm는
-// 너무 엄격해서 익스포터의 부동소수점 미세 오차만으로도 "구멍"으로 오탐되는 경우가 있었음
-// (v1.2.7, Changho 피드백 반영).
-const MESH_VERTEX_MERGE_MM = 0.01
-// 위 병합 오차로 인해 생기는 미세한 스냅 경계 오차(이상 변 1~2개)는 무시하고, 이보다 많은
-// 이상 변이 감지될 때만 "메시 이상"으로 판정. 삼각형 1개짜리 작은 구멍도 변 3개짜리 결함으로
-// 잡아내야 하므로 2보다 크게 올리지 않음 — 오탐 완화는 위 병합 오차 값으로 처리.
-const MESH_ANOMALY_THRESHOLD = 2
+// 정점 병합 오차 범위·이상 변 임계값은 관리자 설정(/api/settings?key=mesh_check)에서 조정 가능
+// — 값 정의와 설명은 lib/constants.ts의 MeshCheckCfg/DEFAULT_MESH_CHECK 참고.
 
 // 메시(형상) 이상 감지: 구멍(비어있는 경계) · 뒤집힌 면(비정상 위상 또는 전체 반전)
 // 정상적으로 닫힌(watertight) 메시는 모든 변(edge)이 반대 방향으로 정확히 한 쌍씩만 존재한다.
@@ -173,8 +165,8 @@ const MESH_ANOMALY_THRESHOLD = 2
 // - 위 국소 검사를 모두 통과해도(위상은 멀쩡해도), 부호 있는 부피가 음수면 메시 전체가 뒤집힌 것
 //   (일부 익스포터·미러링에서 발생) → 이것도 "뒤집힌 면"으로 판정
 // 완전한 형상 검증기는 아니며, 참고용 휴리스틱이다.
-function detectMeshIntegrityIssue(v: Float32Array): MeshIssue {
-  const q = 1 / MESH_VERTEX_MERGE_MM
+function detectMeshIntegrityIssue(v: Float32Array, cfg: MeshCheckCfg): MeshIssue {
+  const q = 1 / cfg.vertexMergeMm
   const key = (i: number) => `${Math.round(v[i]*q)},${Math.round(v[i+1]*q)},${Math.round(v[i+2]*q)}`
   const idOf = new Map<string, number>(); let next = 0
   const getId = (i: number) => { const k = key(i); let x = idOf.get(k); if (x === undefined) { x = next++; idOf.set(k, x) } return x }
@@ -198,7 +190,7 @@ function detectMeshIntegrityIssue(v: Float32Array): MeshIssue {
     if (!edgeTris.has(`${parts[1]}>${parts[0]}`)) { anomalies++; badSet.add(tris[0]) }
   })
   // 부동소수점 스냅 경계에서 생기는 소수의 미세 오차는 무시하고, 임계값을 넘는 경우만 결함으로 판정.
-  const localIssue = anomalies > MESH_ANOMALY_THRESHOLD
+  const localIssue = anomalies > cfg.anomalyThreshold
   // 전역 반전 검사(국소 결함이 없을 때만 의미 있음): 부피가 의미 있는 크기인데 부호가 음수면
   // (=전체 노멀이 안쪽을 향함) 이상으로 판정
   const vol = signedVolumeMm3(v)
@@ -246,13 +238,13 @@ function detectThinWalls(geometry: any, v: Float32Array, minWallMM = 1.2): boole
 
 // 위 두 검사를 종합해 경고 코드 배열('mesh' | 'thin')과 메시 이상 상세(위치 표시용)를 반환.
 // 대용량 메시는 성능을 위해 건너뜀.
-function computeMeshWarnings(v: Float32Array, geometry: any): { warnings: string[]; meshIssue: MeshIssue | null } {
+function computeMeshWarnings(v: Float32Array, geometry: any, meshCfg: MeshCheckCfg): { warnings: string[]; meshIssue: MeshIssue | null } {
   const triCount = v.length / 9
   if (triCount === 0 || triCount > 800000) return { warnings: [], meshIssue: null }
   const warnings: string[] = []
   let meshIssue: MeshIssue | null = null
   try {
-    meshIssue = detectMeshIntegrityIssue(v)
+    meshIssue = detectMeshIntegrityIssue(v, meshCfg)
     if (meshIssue.hasIssue) warnings.push('mesh')
   } catch { meshIssue = null }
   if (detectThinWalls(geometry, v)) warnings.push('thin')
@@ -261,7 +253,7 @@ function computeMeshWarnings(v: Float32Array, geometry: any): { warnings: string
 
 // ── STL 뷰어 ──────────────────────────────────────────
 type STLInfo = { x:number; y:number; z:number; volume:number; surfaceArea:number; objectCount:number|null; warnings:string[] }
-function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number }) {
+function STLViewer({ file, onAnalyzed, height=240, meshCfg=DEFAULT_MESH_CHECK }: { file:File; onAnalyzed:(i:STLInfo)=>void; height?:number; meshCfg?:MeshCheckCfg }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const [info, setInfo] = useState<STLInfo|null>(null)
   const [loading, setLoading] = useState(true)
@@ -308,7 +300,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const triCount = verts.length / 9
         let objectCount: number | null = null
         if (triCount > 0 && triCount <= 800000) objectCount = countObjects(verts)
-        const { warnings, meshIssue } = computeMeshWarnings(verts, geometry)
+        const { warnings, meshIssue } = computeMeshWarnings(verts, geometry, meshCfg)
         const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, surfaceArea, objectCount, warnings }
         setInfo(si); onAnalyzed(si)
 
@@ -427,7 +419,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         if (dom && dom.parentNode) dom.parentNode.removeChild(dom)
       }
     }
-  }, [file, height])
+  }, [file, height, meshCfg.vertexMergeMm, meshCfg.anomalyThreshold])
 
   return (
     <div style={{borderRadius:10,overflow:'hidden',border:'1.5px solid #e5e7eb'}}>
@@ -611,8 +603,8 @@ function Fixed({ text }: { text: string }) {
 }
 
 // ── 파일 아이템 카드 ──────────────────────────────────
-function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
-  item: FileItem; idx: number; options: PrintOptions
+function FileItemCard({ item, idx, options, meshCfg, onChange, onRemove, isMobile }: {
+  item: FileItem; idx: number; options: PrintOptions; meshCfg: MeshCheckCfg
   onChange: (id:string, key:keyof FileItem, val:any)=>void
   onRemove: (id:string)=>void
   isMobile: boolean
@@ -684,7 +676,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':(isCAD?'1fr 1fr':'1fr'),gap:0}}>
         {isCAD && (
           <div style={{padding:14,borderRight:isMobile?'none':'1px solid #e5e7eb',borderBottom:isMobile?'1px solid #e5e7eb':'none'}}>
-            <STLViewer height={220} file={item.file} onAnalyzed={info=>{
+            <STLViewer height={220} file={item.file} meshCfg={meshCfg} onAnalyzed={info=>{
               onChange(item.id,'vol',info.volume)
               onChange(item.id,'surfaceArea',info.surfaceArea as any)
               onChange(item.id,'sizeX',info.x); onChange(item.id,'sizeY',info.y); onChange(item.id,'sizeZ',info.z)
@@ -826,6 +818,7 @@ export default function Home() {
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({})
   const [shipTiers, setShipTiers] = useState<ShippingTier[]>([])
   const [freeThreshold, setFreeThreshold] = useState<number>(50000)
+  const [meshCfg, setMeshCfg] = useState<MeshCheckCfg>(DEFAULT_MESH_CHECK)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── 설정 로드 (페이지 시작 시) ──
@@ -840,6 +833,11 @@ export default function Home() {
       .then(r => r.json())
       .then(raw => { setShipTiers(normalizeShippingTiers(raw)); setFreeThreshold(freeShipThreshold(raw)) })
       .catch(() => { setShipTiers(normalizeShippingTiers(null)); setFreeThreshold(50000) })
+    // 메시 이상 감지 오차 설정(관리자 조정 가능)
+    fetch(`/api/settings?key=mesh_check&t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(raw => setMeshCfg(normalizeMeshCheck(raw)))
+      .catch(() => setMeshCfg(DEFAULT_MESH_CHECK))
     // 현재 진행 중(배송준비 미만) 방식별 작업 수(혼잡·마감 안내용)
     fetch(`/api/daily-count?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
@@ -1205,7 +1203,7 @@ export default function Home() {
               </div>
             )}
             {items.map((item,idx)=>(
-              <FileItemCard key={item.id} item={item} idx={idx} options={options} onChange={updateItem} onRemove={removeItem} isMobile={isMobile}/>
+              <FileItemCard key={item.id} item={item} idx={idx} options={options} meshCfg={meshCfg} onChange={updateItem} onRemove={removeItem} isMobile={isMobile}/>
             ))}
             {items.length>0&&(
               <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>

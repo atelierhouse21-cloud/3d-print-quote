@@ -3,8 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown, normalizeShippingTiers, DEFAULT_SHIPPING_TIERS, freeShipThreshold} from '@/lib/constants'
-import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
+import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown, normalizeShippingTiers, DEFAULT_SHIPPING_TIERS, freeShipThreshold, DEFAULT_MESH_CHECK, normalizeMeshCheck} from '@/lib/constants'
+import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier, MeshCheckCfg } from '@/lib/constants'
 import { parseStepToTriangleSoup } from '@/lib/occt'
 
 // 관리자 전용: 접수된 파일의 견적 계산 근거(중간값) 표시 토글
@@ -580,6 +580,7 @@ export default function AdminPage() {
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [shipTiers, setShipTiers] = useState<ShippingTier[]>([...DEFAULT_SHIPPING_TIERS])
   const [freeThreshold, setFreeThreshold] = useState<number>(50000)
+  const [meshCfg, setMeshCfg] = useState<MeshCheckCfg>({ ...DEFAULT_MESH_CHECK })
   const [savingSettings, setSavingSettings] = useState(false)
   const [showIssueForm, setShowIssueForm] = useState(false)
   const [issueDraft, setIssueDraft]     = useState('')
@@ -649,6 +650,11 @@ export default function AdminPage() {
         setShipTiers(normalizeShippingTiers(v2))
         setFreeThreshold(freeShipThreshold(v2))
       } catch { setShipTiers([...DEFAULT_SHIPPING_TIERS]) }
+      try {
+        const r3 = await fetch('/api/settings?key=mesh_check')
+        const v3 = await r3.json()
+        setMeshCfg(normalizeMeshCheck(v3))
+      } catch { setMeshCfg({ ...DEFAULT_MESH_CHECK }) }
       setSettingsDirty(false)
     } catch(e) { console.error(e) }
   }
@@ -673,6 +679,8 @@ export default function AdminPage() {
     }
     const activeCount = Object.values(editSettings).filter((c: any) => c.enabled).length
     if (activeCount === 0) { alert('최소 1개의 출력 방식을 활성화해야 합니다.'); return }
+    if (!meshCfg.vertexMergeMm || meshCfg.vertexMergeMm <= 0) { alert('메시 이상 감지: 정점 병합 오차 범위를 0보다 크게 입력하세요.'); return }
+    if (meshCfg.anomalyThreshold < 0) { alert('메시 이상 감지: 이상 변 임계값을 0 이상으로 입력하세요.'); return }
 
     if (!confirm('설정을 저장하시겠습니까?')) return
     setSavingSettings(true)
@@ -689,6 +697,12 @@ export default function AdminPage() {
         method: 'POST',
         headers: { 'Content-Type':'application/json', 'x-admin-password': password },
         body: JSON.stringify({ key: 'shipping_tiers', value: { tiers: shipTiers, freeThreshold: Number(freeThreshold) || 0 } })
+      })
+      // 메시 이상 감지 오차 설정 저장
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ key: 'mesh_check', value: meshCfg })
       })
       setSettingsDirty(false)
       alert('설정이 저장되었습니다. 고객 견적 페이지에 즉시 반영됩니다.')
@@ -1430,6 +1444,50 @@ export default function AdminPage() {
                   <p style={{ fontSize:11, color:'#a1a1aa', margin:'8px 0 0' }}>
                     배송비를 제외한 공급가(VAT 별도)가 이 금액 이상이면 배송비가 0원이 됩니다. 0으로 두면 무료배송을 적용하지 않습니다.
                   </p>
+                </div>
+              </div>
+
+              {/* 메시 이상(구멍·뒤집힌 면) 감지 오차 설정 */}
+              <div style={{ background:'#232327', border:'1px solid #33333a', borderRadius:12, padding:18, marginBottom:12 }}>
+                <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>메시 이상(구멍·뒤집힌 면) 감지 오차</div>
+                <p style={{ fontSize:12, color:'#a1a1aa', margin:'0 0 12px' }}>
+                  업로드된 3D 모델 파일에서 &quot;메시 이상&quot;을 판단하는 민감도입니다. 실제로는 정상인 파일이 오류로 잡히거나,
+                  반대로 실제 문제가 있는 파일이 잡히지 않는 경우 아래 값을 조정해보세요. 저장 즉시 새로 업로드하는 파일부터 적용됩니다
+                  (이미 접수된 견적의 판정 결과는 바뀌지 않습니다).
+                </p>
+                <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                  <div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#fbbf24', width:150 }}>정점 병합 오차 범위</span>
+                      <input type="number" step="0.001" min={0.0001} value={meshCfg.vertexMergeMm}
+                        onChange={e => { setMeshCfg(prev => ({ ...prev, vertexMergeMm: parseFloat(e.target.value) || 0 })); setSettingsDirty(true) }}
+                        style={{ width:100, padding:'8px 10px', border:'1px solid #33333a', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                      <span style={{ fontSize:12, color:'#d4d4d8' }}>mm</span>
+                    </div>
+                    <p style={{ fontSize:11, color:'#8a8a90', margin:'6px 0 0' }}>
+                      좌표 차이가 이 값 이내인 두 점은 &quot;같은 점&quot;으로 취급합니다. <b>값을 높이면</b> 익스포터가 남긴 미세한
+                      오차로 인한 오탐은 줄지만, 서로 다른 두 지점이 실수로 하나로 합쳐져 새로운 오탐이 생기거나 실제 결함을
+                      놓칠 수 있습니다(정교한 디테일이 많은 모델일수록 영향이 큼). <b>값을 낮추면</b> 반대로 더 엄격해집니다.
+                      기본값은 0.01mm입니다.
+                    </p>
+                  </div>
+                  <div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#fbbf24', width:150 }}>이상 변 임계값</span>
+                      <input type="number" step="1" min={0} value={meshCfg.anomalyThreshold}
+                        onChange={e => { setMeshCfg(prev => ({ ...prev, anomalyThreshold: parseInt(e.target.value) || 0 })); setSettingsDirty(true) }}
+                        style={{ width:100, padding:'8px 10px', border:'1px solid #33333a', borderRadius:8, fontSize:14, fontWeight:700, textAlign:'center' as const }} />
+                      <span style={{ fontSize:12, color:'#d4d4d8' }}>개 초과 시 이상으로 판정</span>
+                    </div>
+                    <p style={{ fontSize:11, color:'#8a8a90', margin:'6px 0 0' }}>
+                      위 병합 오차로 인해 생기는 사소한 경계 오차(보통 1~2개)는 무시하고, 이 값을 초과하는 이상이 감지될 때만
+                      실제 결함으로 판정합니다. 너무 높이면 작은 구멍 같은 실제 결함을 놓칠 수 있습니다. 기본값은 2입니다.
+                    </p>
+                  </div>
+                  <button onClick={() => { setMeshCfg({ ...DEFAULT_MESH_CHECK }); setSettingsDirty(true) }}
+                    style={{ alignSelf:'flex-start', padding:'7px 14px', background:'#1f1f23', border:'1px solid #33333a', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                    기본값으로 되돌리기
+                  </button>
                 </div>
               </div>
 

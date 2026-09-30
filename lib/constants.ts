@@ -285,3 +285,24 @@ export function priceBreakdown(supply: number | null | undefined, shipping?: num
 
 // 진행 중(배송준비 단계 미만)으로 간주하는 상태 — 혼잡/마감 판정의 기준
 export const ACTIVE_STATUSES = ['pending', 'approved', 'payment_confirmed', 'printing', 'post_processing']
+
+// ═══════════════════════════════════════════════════════════════
+// 메시 이상(구멍·뒤집힌 면) 감지 오차 설정 — 관리자 설정에서 조정 가능
+// ═══════════════════════════════════════════════════════════════
+// vertexMergeMm: 두 정점 좌표 차이가 이 값(mm) 이내면 "같은 점"으로 취급해 변을 짝짓는다.
+//   값을 낮추면(엄격) 익스포터의 미세한 부동소수점 오차만으로도 정상 파일이 오탐될 수 있고,
+//   값을 높이면(관대) 실제로 서로 다른 두 점(정밀하게 가까이 붙은 형상)이 하나로 합쳐져
+//   오히려 새로운 오탐이 생기거나 실제 결함을 놓칠 수 있다. 파일 특성에 따라 최적값이 달라서
+//   관리자가 직접 조정할 수 있게 함.
+// anomalyThreshold: 병합 오차로 인해 생기는 미세한 스냅 경계 오차(이상 변 1~2개 수준)는 무시하고,
+//   이 값을 "초과"하는 이상 변이 감지될 때만 메시 이상으로 판정한다.
+export type MeshCheckCfg = { vertexMergeMm: number; anomalyThreshold: number }
+export const DEFAULT_MESH_CHECK: MeshCheckCfg = { vertexMergeMm: 0.01, anomalyThreshold: 2 }
+export function normalizeMeshCheck(raw: any): MeshCheckCfg {
+  const v = Number(raw?.vertexMergeMm)
+  const t = Number(raw?.anomalyThreshold)
+  return {
+    vertexMergeMm: (isFinite(v) && v > 0) ? v : DEFAULT_MESH_CHECK.vertexMergeMm,
+    anomalyThreshold: (isFinite(t) && t >= 0) ? Math.round(t) : DEFAULT_MESH_CHECK.anomalyThreshold,
+  }
+}
