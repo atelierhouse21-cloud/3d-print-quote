@@ -149,6 +149,12 @@ function signedVolumeMm3(v: Float32Array): number {
   return vol
 }
 
+// 메시 이상 검사 결과. badTriangles는 국소 결함(구멍·부분 뒤집힘)에 연루된 삼각형 인덱스 —
+// 3D 미리보기에서 해당 삼각형만 따로 빨간색으로 덧그려 "어디가 문제인지" 보여주는 데 사용.
+// globallyInverted는 특정 위치가 아니라 모델 전체 방향이 반전된 경우라, 위치 표시 대신
+// 앞/뒷면을 다른 색으로 렌더링해서 "전체가 뒤집혔다"는 것 자체를 보여준다.
+type MeshIssue = { hasIssue: boolean; badTriangles: number[]; globallyInverted: boolean }
+
 // 메시(형상) 이상 감지: 구멍(비어있는 경계) · 뒤집힌 면(비정상 위상 또는 전체 반전)
 // 정상적으로 닫힌(watertight) 메시는 모든 변(edge)이 반대 방향으로 정확히 한 쌍씩만 존재한다.
 // - 어떤 변의 반대 방향 짝이 없으면 → 구멍(경계)
@@ -156,30 +162,40 @@ function signedVolumeMm3(v: Float32Array): number {
 // - 위 국소 검사를 모두 통과해도(위상은 멀쩡해도), 부호 있는 부피가 음수면 메시 전체가 뒤집힌 것
 //   (일부 익스포터·미러링에서 발생) → 이것도 "뒤집힌 면"으로 판정
 // 완전한 형상 검증기는 아니며, 참고용 휴리스틱이다.
-function detectMeshIntegrityIssue(v: Float32Array): boolean {
+function detectMeshIntegrityIssue(v: Float32Array): MeshIssue {
   const key = (i: number) => `${Math.round(v[i]*1000)},${Math.round(v[i+1]*1000)},${Math.round(v[i+2]*1000)}`
   const idOf = new Map<string, number>(); let next = 0
   const getId = (i: number) => { const k = key(i); let x = idOf.get(k); if (x === undefined) { x = next++; idOf.set(k, x) } return x }
-  const dirCount = new Map<string, number>()
-  for (let i = 0; i < v.length; i += 9) {
+  // 방향 있는 변(edge) → 그 변을 가진 삼각형 인덱스들 (정상이면 보통 변마다 삼각형 1개)
+  const edgeTris = new Map<string, number[]>()
+  const triCount = Math.floor(v.length / 9)
+  for (let t = 0; t < triCount; t++) {
+    const i = t * 9
     const a = getId(i), b = getId(i+3), c = getId(i+6)
     for (const [p, q] of [[a,b],[b,c],[c,a]] as [number, number][]) {
       const k = `${p}>${q}`
-      dirCount.set(k, (dirCount.get(k) || 0) + 1)
+      const arr = edgeTris.get(k)
+      if (arr) arr.push(t); else edgeTris.set(k, [t])
     }
   }
   let anomalies = 0
-  dirCount.forEach((cnt, k) => {
-    if (cnt > 1) { anomalies += cnt - 1; return }
+  const badSet = new Set<number>()
+  edgeTris.forEach((tris, k) => {
+    if (tris.length > 1) { anomalies += tris.length - 1; tris.forEach(t => badSet.add(t)); return }
     const parts = k.split('>')
-    if (!dirCount.has(`${parts[1]}>${parts[0]}`)) anomalies++
+    if (!edgeTris.has(`${parts[1]}>${parts[0]}`)) { anomalies++; badSet.add(tris[0]) }
   })
   // 삼각형 1개 분량(변 3개)의 결함부터 감지. 부동소수점 스냅 경계에서 생기는 1~2개의 미세 오차는 무시.
-  if (anomalies > 2) return true
-  // 전역 반전 검사: 부피가 의미 있는 크기인데 부호가 음수면(=전체 노멀이 안쪽을 향함) 이상으로 판정
+  const localIssue = anomalies > 2
+  // 전역 반전 검사(국소 결함이 없을 때만 의미 있음): 부피가 의미 있는 크기인데 부호가 음수면
+  // (=전체 노멀이 안쪽을 향함) 이상으로 판정
   const vol = signedVolumeMm3(v)
-  if (Math.abs(vol) > 1 && vol < 0) return true
-  return false
+  const globallyInverted = !localIssue && Math.abs(vol) > 1 && vol < 0
+  return {
+    hasIssue: localIssue || globallyInverted,
+    badTriangles: localIssue ? Array.from(badSet) : [],
+    globallyInverted,
+  }
 }
 
 // 얇은 벽 가능성 감지: 표본 삼각형 표면에서 안쪽으로 광선을 쏴 반대쪽 벽까지의 거리를 측정.
@@ -216,14 +232,19 @@ function detectThinWalls(geometry: any, v: Float32Array, minWallMM = 1.2): boole
   } catch { return false }
 }
 
-// 위 두 검사를 종합해 경고 코드 배열로 반환 ('mesh' | 'thin'). 대용량 메시는 성능을 위해 건너뜀.
-function computeMeshWarnings(v: Float32Array, geometry: any): string[] {
+// 위 두 검사를 종합해 경고 코드 배열('mesh' | 'thin')과 메시 이상 상세(위치 표시용)를 반환.
+// 대용량 메시는 성능을 위해 건너뜀.
+function computeMeshWarnings(v: Float32Array, geometry: any): { warnings: string[]; meshIssue: MeshIssue | null } {
   const triCount = v.length / 9
-  if (triCount === 0 || triCount > 800000) return []
+  if (triCount === 0 || triCount > 800000) return { warnings: [], meshIssue: null }
   const warnings: string[] = []
-  try { if (detectMeshIntegrityIssue(v)) warnings.push('mesh') } catch {}
+  let meshIssue: MeshIssue | null = null
+  try {
+    meshIssue = detectMeshIntegrityIssue(v)
+    if (meshIssue.hasIssue) warnings.push('mesh')
+  } catch { meshIssue = null }
   if (detectThinWalls(geometry, v)) warnings.push('thin')
-  return warnings
+  return { warnings, meshIssue }
 }
 
 // ── STL 뷰어 ──────────────────────────────────────────
@@ -233,6 +254,8 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
   const [info, setInfo] = useState<STLInfo|null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(false)
+  // 메시 이상이 어떻게 시각화됐는지(국소 결함 하이라이트 vs 전역 반전 앞/뒷면 색 구분) — 안내 문구용
+  const [issueMode, setIssueMode] = useState<'local'|'global'|null>(null)
 
   useEffect(() => {
     if (!file) return
@@ -241,9 +264,14 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
     let controls: any = null
     let geometry: THREE.BufferGeometry | null = null
     let material: THREE.Material | null = null
+    let backMaterial: THREE.Material | null = null
+    let highlightGeometry: THREE.BufferGeometry | null = null
+    let highlightMaterial: THREE.Material | null = null
+    let wireframeGeometry: THREE.BufferGeometry | null = null
+    let wireframeMaterial: THREE.Material | null = null
     let ro: ResizeObserver | null = null
     let animId = 0
-    setLoading(true); setErr(false)
+    setLoading(true); setErr(false); setIssueMode(null)
 
     file.arrayBuffer().then(async buf => {
       if (disposed) return
@@ -268,7 +296,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const triCount = verts.length / 9
         let objectCount: number | null = null
         if (triCount > 0 && triCount <= 800000) objectCount = countObjects(verts)
-        const warnings = computeMeshWarnings(verts, geometry)
+        const { warnings, meshIssue } = computeMeshWarnings(verts, geometry)
         const si: STLInfo = { x:bbox.x, y:bbox.y, z:bbox.z, volume, surfaceArea, objectCount, warnings }
         setInfo(si); onAnalyzed(si)
 
@@ -308,6 +336,38 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
         const mesh = new THREE.Mesh(geometry, material)
         scene.add(mesh)
 
+        // 메시 이상 위치 시각화 — 다른 견적 사이트에서는 안 걸리는 파일이 왜 여기서 걸리는지
+        // 고객·관리자가 직접 눈으로 확인할 수 있도록 문제 지점을 표시한다.
+        // (geometry.center() 이후이므로 verts는 이미 화면에 보이는 좌표계로 이동된 상태)
+        if (meshIssue?.hasIssue) {
+          if (meshIssue.globallyInverted) {
+            // 전역 반전: 특정 위치가 아니라 모델 전체 방향이 반대라, 앞면/뒷면을 다른 색으로 렌더링.
+            // 정상 모델은 바깥에서 봤을 때 거의 전부 앞면(파란색)으로 보이고,
+            // 전체가 뒤집힌 모델은 거의 전부 뒷면(빨간색)으로 보여서 한눈에 구분됨.
+            backMaterial = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.2, roughness: 0.5, side: THREE.BackSide })
+            scene.add(new THREE.Mesh(geometry, backMaterial))
+            setIssueMode('global')
+          } else if (meshIssue.badTriangles.length > 0) {
+            // 국소 결함(구멍·부분 뒤집힌 면): 문제로 잡힌 삼각형만 따로 빨간색+흰색 윤곽선으로 덧그림
+            const badVerts = new Float32Array(meshIssue.badTriangles.length * 9)
+            meshIssue.badTriangles.forEach((t, idx) => { badVerts.set(verts.subarray(t*9, t*9+9), idx*9) })
+            highlightGeometry = new THREE.BufferGeometry()
+            highlightGeometry.setAttribute('position', new THREE.BufferAttribute(badVerts, 3))
+            highlightGeometry.computeVertexNormals()
+            highlightMaterial = new THREE.MeshStandardMaterial({
+              color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.35,
+              metalness: 0.1, roughness: 0.6, side: THREE.DoubleSide,
+              polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+            })
+            scene.add(new THREE.Mesh(highlightGeometry, highlightMaterial))
+            // 작은 결함도 눈에 띄도록 흰색 윤곽선을 덧그림(항상 위에 보이게 depthTest 끔)
+            wireframeGeometry = new THREE.WireframeGeometry(highlightGeometry)
+            wireframeMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 })
+            scene.add(new THREE.LineSegments(wireframeGeometry, wireframeMaterial))
+            setIssueMode('local')
+          }
+        }
+
         controls = new OrbitControls(camera, renderer.domElement)
         controls.enableDamping = true
         controls.dampingFactor = 0.1
@@ -344,6 +404,11 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
       try { controls?.dispose?.() } catch {}
       try { geometry?.dispose() } catch {}
       try { (material as any)?.dispose?.() } catch {}
+      try { (backMaterial as any)?.dispose?.() } catch {}
+      try { highlightGeometry?.dispose() } catch {}
+      try { (highlightMaterial as any)?.dispose?.() } catch {}
+      try { wireframeGeometry?.dispose() } catch {}
+      try { (wireframeMaterial as any)?.dispose?.() } catch {}
       if (renderer) {
         renderer.dispose()
         const dom = renderer.domElement
@@ -373,6 +438,13 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
               <div style={{fontSize:12,fontWeight:700}}>{v}</div>
             </div>
           ))}
+        </div>
+      )}
+      {issueMode && (
+        <div style={{padding:'7px 10px',borderTop:'1px solid #fca5a5',background:'#fef2f2',fontSize:11,color:'#b91c1c',lineHeight:1.5}}>
+          {issueMode === 'global'
+            ? '빨간색으로 보이는 면 = 모델 전체 방향이 뒤집혀 있습니다(전역 반전).'
+            : '빨간색·흰색 윤곽선 부분에서 메시 이상(구멍 또는 뒤집힌 면)이 감지되었습니다.'}
         </div>
       )}
     </div>
