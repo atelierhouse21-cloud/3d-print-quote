@@ -366,7 +366,7 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
 // ── 타입 ──────────────────────────────────────────────
 type FileItem = {
   id:string; file:File
-  vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null; manualReview:boolean
+  vol:number|null; sizeX:number|null; sizeY:number|null; sizeZ:number|null; objectCount:number|null
   method:string; material:string; density:number; coefficient:number; minPrice:number; color:string; quality:string; factor:number; infill:number; surfaceArea:number|null
   qty:number; note:string; warnings:string[]
 }
@@ -463,10 +463,11 @@ function itemNeedsManual(it: FileItem, options: PrintOptions): boolean {
   return false
 }
 
-// 위 사유(다중 개체·크기 초과) 또는 고객이 요청사항을 입력한 경우까지 포함해 "담당자 견적" 표시가 필요한지 판정.
-// itemNeedsManual과 달리 다음 단계 진행을 막지 않는다 — 요청사항 입력은 안내만 하고 자동으로 진행 가능.
+// 위 사유(다중 개체·크기 초과) 또는 메시 이상(구멍·뒤집힌 면) 또는 고객이 요청사항을 입력한 경우까지 포함해 "담당자 견적" 표시가 필요한지 판정.
+// itemNeedsManual과 달리 다음 단계 진행을 막지 않는다 — 안내만 하고 자동으로 진행 가능.
 function itemIsManualQuote(it: FileItem, options: PrintOptions): boolean {
-  return itemNeedsManual(it, options) || it.note.trim() !== ''
+  const meshIssue = Array.isArray(it.warnings) && it.warnings.includes('mesh')
+  return itemNeedsManual(it, options) || it.note.trim() !== '' || meshIssue
 }
 
 // ── FileItem 초기값 (설정 기반) ───────────────────────
@@ -479,7 +480,7 @@ function newFileItem(file: File, options: PrintOptions): FileItem {
   const quals = getQualities(options, method)
   return {
     id: Math.random().toString(36).slice(2),
-    file, vol:null, surfaceArea:null, sizeX:null, sizeY:null, sizeZ:null, objectCount:null, manualReview:false,
+    file, vol:null, surfaceArea:null, sizeX:null, sizeY:null, sizeZ:null, objectCount:null,
     method,
     material: mat?.name || '',
     density:  mat?.density || 1.0,
@@ -557,8 +558,16 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
   const overZ = !!matCfg && matCfg.maxZ > 0 && item.sizeZ != null && item.sizeZ > matCfg.maxZ
   const overSize = overX || overY || overZ
   const multiObject = item.objectCount != null && item.objectCount > 1
-  const needsManual = multiObject || overSize   // 자동 견적 불가 → 담당자 견적 요청 대상
+  const meshIssue = Array.isArray(item.warnings) && item.warnings.includes('mesh')   // 메시 이상(구멍·뒤집힌 면)
+  const thinWall = Array.isArray(item.warnings) && item.warnings.includes('thin')    // 얇은 벽 가능성(참고용, 담당자 견적 전환 사유 아님)
   const noteManual = item.note.trim() !== ''    // 요청사항 입력 → 담당자 견적으로 전환(진행은 막지 않음)
+  const manualQuote = itemIsManualQuote(item, options)   // 사이즈 초과·다중 개체·메시 이상·요청사항 중 하나라도 있으면 담당자 견적(진행은 막지 않음)
+  const manualReasons = [
+    overSize && '사이즈 초과',
+    multiObject && '개체 다수',
+    meshIssue && '메시 이상',
+    noteManual && '요청사항 입력',
+  ].filter(Boolean).join(' · ')
 
   return (
     <div style={{border:'1.5px solid #e5e7eb',borderRadius:14,overflow:'hidden',marginBottom:16,background:'#fff'}}>
@@ -647,10 +656,10 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               style={{...S.inp,fontSize:12,minHeight:54,resize:'vertical'}}/>
           </div>
 
-          {/* 경고 (담당자 견적 필요 사유) */}
+          {/* 경고 (담당자 견적 필요 사유) — 확인만 시켜줄 뿐 다음 단계 진행은 막지 않음 */}
           {overSize && (
             <div style={{marginBottom:8,padding:'8px 12px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,fontSize:12,color:'#b91c1c',fontWeight:600}}>
-              출력 가능 사이즈를 초과합니다. (초과: {[overX?'X':'',overY?'Y':'',overZ?'Z':''].filter(Boolean).join('·')}축)
+              출력 가능 사이즈를 초과합니다.
             </div>
           )}
           {multiObject && (
@@ -658,47 +667,36 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
               개체가 1개가 아닙니다. (이 파일에서 {item.objectCount}개의 개체가 감지되었습니다.)
             </div>
           )}
-
-          {needsManual ? (
-            /* 자동 견적 불가 → 담당자 견적 요청 */
-            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'12px 14px'}}>
-              <div style={{fontSize:12,color:'#1e40af',marginBottom:10,lineHeight:1.6}}>
-                이 파일은 자동 견적이 어려워 담당자 확인이 필요합니다. 아래 <b>담당자 견적 요청</b>을 눌러 주세요. (요청하셔야 다음 단계로 진행됩니다.)
-              </div>
-              {item.manualReview ? (
-                <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center',padding:'9px 0',background:'#dcfce7',borderRadius:7,color:'#15803d',fontSize:13,fontWeight:700}}>
-                  담당자 견적 요청됨
-                </div>
-              ) : (
-                <button onClick={()=>onChange(item.id,'manualReview',true as any)}
-                  style={{width:'100%',padding:'10px 0',background:'#2563eb',color:'#fff',border:'none',borderRadius:7,fontSize:13,fontWeight:700,cursor:'pointer'}}>
-                  담당자 견적 요청
-                </button>
-              )}
+          {meshIssue && (
+            <div style={{marginBottom:8,padding:'8px 12px',background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,fontSize:12,color:'#b91c1c',fontWeight:600}}>
+              메시 이상이 감지되었습니다. (구멍 또는 뒤집힌 면 — 출력이 어려울 수 있습니다)
             </div>
-          ) : (
-            <>
-              {noteManual && (
-                <div style={{marginBottom:8,padding:'8px 12px',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,fontSize:12,color:'#1e40af',fontWeight:600,lineHeight:1.6}}>
-                  요청사항이 입력되어 자동 견적 대신 담당자 견적으로 진행됩니다. (다음 단계 진행은 그대로 가능합니다)
-                </div>
-              )}
-              {/* 예상 금액 */}
-              <div style={{background: noteManual ? '#eff6ff' : '#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span style={{fontSize:11,color:'#6b7280'}}>예상 금액 (VAT 별도)</span>
-                <span style={{fontSize:15,fontWeight:800,color: noteManual ? '#2563eb' : '#15803d'}}>{noteManual ? '담당자 견적' : (item.vol?krw(price):'담당자 산출')}</span>
-              </div>
-              {item.minPrice > 0 && (
-                <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>
-                  이 소재의 최소 견적 금액은 {krw(item.minPrice)} 입니다.
-                </div>
-              )}
-              {hasMax && (
-                <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>
-                  이 소재의 최대 출력 사이즈: {matCfg!.maxX>0?`X ${matCfg!.maxX}`:'X 무제한'} · {matCfg!.maxY>0?`Y ${matCfg!.maxY}`:'Y 무제한'} · {matCfg!.maxZ>0?`Z ${matCfg!.maxZ}`:'Z 무제한'} (mm)
-                </div>
-              )}
-            </>
+          )}
+          {thinWall && (
+            <div style={{marginBottom:8,padding:'8px 12px',background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:8,fontSize:12,color:'#92400e',fontWeight:600}}>
+              벽 두께가 얇은 부분이 있을 수 있습니다. (출력 중 파손 가능성 — 참고용)
+            </div>
+          )}
+
+          {manualQuote && (
+            <div style={{marginBottom:8,padding:'8px 12px',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,fontSize:12,color:'#1e40af',fontWeight:600,lineHeight:1.6}}>
+              {manualReasons} 사유로 자동 견적 대신 담당자 견적으로 진행됩니다. (다음 단계 진행은 그대로 가능합니다)
+            </div>
+          )}
+          {/* 예상 금액 */}
+          <div style={{background: manualQuote ? '#eff6ff' : '#f0fdf4',borderRadius:8,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:11,color:'#6b7280'}}>예상 금액 (VAT 별도)</span>
+            <span style={{fontSize:15,fontWeight:800,color: manualQuote ? '#2563eb' : '#15803d'}}>{manualQuote ? '담당자 견적' : (item.vol?krw(price):'담당자 산출')}</span>
+          </div>
+          {item.minPrice > 0 && (
+            <div style={{marginTop:6,fontSize:11,color:'#6b7280',textAlign:'right'}}>
+              이 소재의 최소 견적 금액은 {krw(item.minPrice)} 입니다.
+            </div>
+          )}
+          {hasMax && (
+            <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>
+              이 소재의 최대 출력 사이즈: {matCfg!.maxX>0?`X ${matCfg!.maxX}`:'X 무제한'} · {matCfg!.maxY>0?`Y ${matCfg!.maxY}`:'Y 무제한'} · {matCfg!.maxZ>0?`Z ${matCfg!.maxZ}`:'Z 무제한'} (mm)
+            </div>
           )}
         </div>
       </div>
@@ -829,8 +827,6 @@ export default function Home() {
     if(!customer.address.trim()){alert('수령 주소는 필수입니다.');return}
     if (!agreePrivacy) { alert('개인정보 수집·이용 동의(필수)에 체크해 주세요.'); return }
     if (!agreeRefund) { alert('취소·교환·환불 정책 확인(필수)에 체크해 주세요.'); return }
-    const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
-    if (pending) { alert(`"${pending.file.name}" 파일은 담당자 견적이 필요합니다. 파일 카드의 "담당자 견적 요청" 버튼을 눌러 주세요.`); return }
     const closedItem = items.find(it => methodClosed(it.method))
     if (closedItem) { alert(`현재 ${METHODS[closedItem.method]?.label || closedItem.method} 방식은 작업량이 많아 접수가 마감되었습니다. 다른 방식을 선택하시거나 잠시 후 다시 시도해 주세요.`); return }
     setLoading(true)
@@ -1113,11 +1109,7 @@ export default function Home() {
             ))}
             {items.length>0&&(
               <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
-                <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>{
-                  const pending = items.find(it => itemNeedsManual(it, options) && !it.manualReview)
-                  if(pending){alert(`"${pending.file.name}" 파일은 자동 견적이 어려워 담당자 확인이 필요합니다.\n파일 카드의 "담당자 견적 요청" 버튼을 누른 뒤 진행해 주세요.`);return}
-                  setStep(2)
-                }}>견적 확인 →</button>
+                <button style={{...S.btn,background:'#2563eb',color:'#fff'}} onClick={()=>setStep(2)}>견적 확인 →</button>
               </div>
             )}
           </>}
