@@ -155,6 +155,17 @@ function signedVolumeMm3(v: Float32Array): number {
 // 앞/뒷면을 다른 색으로 렌더링해서 "전체가 뒤집혔다"는 것 자체를 보여준다.
 type MeshIssue = { hasIssue: boolean; badTriangles: number[]; globallyInverted: boolean }
 
+// 정점 병합 오차 범위(mm) — 좌표 차이가 이 값 이내면 "같은 점"으로 취급해 변을 짝짓는다.
+// 값을 낮추면 더 엄격해져 정상 파일도 오탐될 수 있고, 값을 높이면 더 관대해져 실제 결함도
+// 놓칠 수 있다. 슬라이서들이 보통 쓰는 병합 오차(0.01mm대)에 맞춘 값 — 예전 0.001mm는
+// 너무 엄격해서 익스포터의 부동소수점 미세 오차만으로도 "구멍"으로 오탐되는 경우가 있었음
+// (v1.2.7, Changho 피드백 반영).
+const MESH_VERTEX_MERGE_MM = 0.01
+// 위 병합 오차로 인해 생기는 미세한 스냅 경계 오차(이상 변 1~2개)는 무시하고, 이보다 많은
+// 이상 변이 감지될 때만 "메시 이상"으로 판정. 삼각형 1개짜리 작은 구멍도 변 3개짜리 결함으로
+// 잡아내야 하므로 2보다 크게 올리지 않음 — 오탐 완화는 위 병합 오차 값으로 처리.
+const MESH_ANOMALY_THRESHOLD = 2
+
 // 메시(형상) 이상 감지: 구멍(비어있는 경계) · 뒤집힌 면(비정상 위상 또는 전체 반전)
 // 정상적으로 닫힌(watertight) 메시는 모든 변(edge)이 반대 방향으로 정확히 한 쌍씩만 존재한다.
 // - 어떤 변의 반대 방향 짝이 없으면 → 구멍(경계)
@@ -163,7 +174,8 @@ type MeshIssue = { hasIssue: boolean; badTriangles: number[]; globallyInverted: 
 //   (일부 익스포터·미러링에서 발생) → 이것도 "뒤집힌 면"으로 판정
 // 완전한 형상 검증기는 아니며, 참고용 휴리스틱이다.
 function detectMeshIntegrityIssue(v: Float32Array): MeshIssue {
-  const key = (i: number) => `${Math.round(v[i]*1000)},${Math.round(v[i+1]*1000)},${Math.round(v[i+2]*1000)}`
+  const q = 1 / MESH_VERTEX_MERGE_MM
+  const key = (i: number) => `${Math.round(v[i]*q)},${Math.round(v[i+1]*q)},${Math.round(v[i+2]*q)}`
   const idOf = new Map<string, number>(); let next = 0
   const getId = (i: number) => { const k = key(i); let x = idOf.get(k); if (x === undefined) { x = next++; idOf.set(k, x) } return x }
   // 방향 있는 변(edge) → 그 변을 가진 삼각형 인덱스들 (정상이면 보통 변마다 삼각형 1개)
@@ -185,8 +197,8 @@ function detectMeshIntegrityIssue(v: Float32Array): MeshIssue {
     const parts = k.split('>')
     if (!edgeTris.has(`${parts[1]}>${parts[0]}`)) { anomalies++; badSet.add(tris[0]) }
   })
-  // 삼각형 1개 분량(변 3개)의 결함부터 감지. 부동소수점 스냅 경계에서 생기는 1~2개의 미세 오차는 무시.
-  const localIssue = anomalies > 2
+  // 부동소수점 스냅 경계에서 생기는 소수의 미세 오차는 무시하고, 임계값을 넘는 경우만 결함으로 판정.
+  const localIssue = anomalies > MESH_ANOMALY_THRESHOLD
   // 전역 반전 검사(국소 결함이 없을 때만 의미 있음): 부피가 의미 있는 크기인데 부호가 음수면
   // (=전체 노멀이 안쪽을 향함) 이상으로 판정
   const vol = signedVolumeMm3(v)
