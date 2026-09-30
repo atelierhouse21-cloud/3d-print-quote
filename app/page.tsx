@@ -5,6 +5,13 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { METHODS, calcDays, krw, calcPriceV2, calcPriceFDM, normalizeSettings, defaultSettings, defaultMethodCfg, RETENTION_MONTHS, priceBreakdown, SHIPPING_FEE, shippingForWeight, normalizeShippingTiers, freeShipThreshold } from '@/lib/constants'
 import type { PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
+import { parseStepToTriangleSoup } from '@/lib/occt'
+
+// 업로드 허용 3D 모델 확장자 — STL(메시) + STEP/STP(CAD 솔리드, occt-import-js로 삼각형화)
+const MODEL_EXTS = ['stl', 'stp', 'step']
+function modelExtOf(fileName: string): string {
+  return fileName.split('.').pop()?.toLowerCase() || ''
+}
 
 // ── 모바일(세로 화면) 감지 훅 ─────────────────────────
 // 화면 폭이 좁아지면 가로 배치를 세로(1열)로 자동 전환한다.
@@ -238,11 +245,20 @@ function STLViewer({ file, onAnalyzed, height=240 }: { file:File; onAnalyzed:(i:
     let animId = 0
     setLoading(true); setErr(false)
 
-    file.arrayBuffer().then(buf => {
+    file.arrayBuffer().then(async buf => {
       if (disposed) return
       try {
-        // STL 파싱 (바이너리/아스키 자동)
-        geometry = new STLLoader().parse(buf as ArrayBuffer)
+        const ext = file.name.split('.').pop()?.toLowerCase()
+        if (ext === 'stp' || ext === 'step') {
+          // STEP/STP 파싱: CAD 커널(occt-import-js, WASM)로 삼각형화 후 STL과 동일한 정점 배열로 변환
+          const verts0 = await parseStepToTriangleSoup(buf as ArrayBuffer)
+          if (disposed) return
+          geometry = new THREE.BufferGeometry()
+          geometry.setAttribute('position', new THREE.BufferAttribute(verts0, 3))
+        } else {
+          // STL 파싱 (바이너리/아스키 자동)
+          geometry = new STLLoader().parse(buf as ArrayBuffer)
+        }
 
         // 분석용: 위치 배열로 부피·크기·개체수 계산 (원본 기준, 정확)
         const verts = geometry.getAttribute('position').array as Float32Array
@@ -547,7 +563,7 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
     onChange(item.id, 'color',    mat?.colors?.[0] || '')
   }
 
-  const isSTL = item.file.name.split('.').pop()?.toLowerCase() === 'stl'
+  const isCAD = MODEL_EXTS.includes(modelExtOf(item.file.name))
   const price = linePrice(item, options)
 
   // 선택 소재의 최대 출력 사이즈 + 초과 여부
@@ -581,8 +597,8 @@ function FileItemCard({ item, idx, options, onChange, onRemove, isMobile }: {
       </div>
 
       {/* 본문 — 폰에서는 미리보기(위) + 설정(아래) 1열로 쌓음 */}
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':(isSTL?'1fr 1fr':'1fr'),gap:0}}>
-        {isSTL && (
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':(isCAD?'1fr 1fr':'1fr'),gap:0}}>
+        {isCAD && (
           <div style={{padding:14,borderRight:isMobile?'none':'1px solid #e5e7eb',borderBottom:isMobile?'1px solid #e5e7eb':'none'}}>
             <STLViewer height={220} file={item.file} onAnalyzed={info=>{
               onChange(item.id,'vol',info.volume)
@@ -787,8 +803,8 @@ export default function Home() {
 
   const handleFile = (f: File | null) => {
     if (!f) return
-    const ext = f.name.split('.').pop()?.toLowerCase()
-    if (ext !== 'stl') { alert('STL 파일만 업로드 가능합니다.'); return }
+    const ext = modelExtOf(f.name)
+    if (!MODEL_EXTS.includes(ext)) { alert('STL, STEP(STP) 파일만 업로드 가능합니다.'); return }
     setItems(p => [...p, newFileItem(f, options)])
   }
 
@@ -1082,7 +1098,7 @@ export default function Home() {
           {/* ── STEP 1: 파일 업로드 & 출력 설정 ── */}
           {step===1&&<>
             <p style={{color:'#6b7280',marginBottom:16,fontSize:13}}>출력할 파일을 업로드하고 각 파일의 출력 설정을 선택해 주세요.</p>
-            <input ref={fileRef} type="file" accept={isMobile?undefined:'.stl'} style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
+            <input ref={fileRef} type="file" accept={isMobile?undefined:'.stl,.stp,.step'} style={{display:'none'}} onChange={e=>{handleFile(e.target.files?.[0]||null);if(fileRef.current)fileRef.current.value=''}}/>
             <div
               onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
               onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0])}}
@@ -1091,7 +1107,7 @@ export default function Home() {
               <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
                 <div style={{flex:1,minWidth:200}}>
                   <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>파일을 이 영역에 드래그 하거나</div>
-                  <div style={{fontSize:12,color:'#6b7280'}}>STL 파일만 지원</div>
+                  <div style={{fontSize:12,color:'#6b7280'}}>STL · STEP(STP) 파일 지원</div>
                 </div>
                 <button onClick={()=>fileRef.current?.click()}
                   style={{...S.btn,background:'#2563eb',color:'#fff',flexShrink:0,fontSize:13}}>

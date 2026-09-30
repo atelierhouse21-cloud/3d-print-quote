@@ -5,6 +5,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { METHODS, krw, calcDays, COURIERS, normalizeSettings, defaultMethodCfg, DEFAULT_DENSITY, DEFAULT_COEFF, RETENTION_MS , priceBreakdown, normalizeShippingTiers, DEFAULT_SHIPPING_TIERS, freeShipThreshold} from '@/lib/constants'
 import type { Quote, PrintOptions, MethodCfg, MaterialCfg, QualityCfg, ShippingTier } from '@/lib/constants'
+import { parseStepToTriangleSoup } from '@/lib/occt'
 
 // 관리자 전용: 접수된 파일의 견적 계산 근거(중간값) 표시 토글
 function CalcDetail({ fl }: { fl: any }) {
@@ -136,7 +137,15 @@ function AdminSTLViewer({ path, password }: { path: string; password: string }) 
         if (!res.ok || !j.url) throw new Error(j.error || '파일을 불러오지 못했습니다')
         const buf = await (await fetch(j.url)).arrayBuffer()
         if (disposed) return
-        geometry = new STLLoader().parse(buf)
+        const ext = path.split('.').pop()?.toLowerCase()
+        if (ext === 'stp' || ext === 'step') {
+          const verts0 = await parseStepToTriangleSoup(buf)
+          if (disposed) return
+          geometry = new THREE.BufferGeometry()
+          geometry.setAttribute('position', new THREE.BufferAttribute(verts0, 3))
+        } else {
+          geometry = new STLLoader().parse(buf)
+        }
         const mount = mountRef.current
         if (!mount) { setLoading(false); return }
         const W = mount.clientWidth || 400, H = 240
